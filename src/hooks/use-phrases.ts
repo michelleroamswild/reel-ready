@@ -1,42 +1,89 @@
-import { useState, useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 import type { Phrase } from "@/types/phrase";
 
-const STORAGE_KEY = "clipmatch-phrases";
+const PHRASES_KEY = ["phrases"];
 
-function loadPhrases(): Phrase[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
+async function fetchPhrases(): Promise<Phrase[]> {
+  const { data, error } = await supabase
+    .from("phrases")
+    .select("*")
+    .order("created_at", { ascending: false });
 
-function savePhrases(phrases: Phrase[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(phrases));
+  if (error) throw error;
+  return data;
 }
 
 export function usePhrases() {
-  const [phrases, setPhrases] = useState<Phrase[]>(loadPhrases);
+  const queryClient = useQueryClient();
 
-  const sync = (next: Phrase[]) => {
-    setPhrases(next);
-    savePhrases(next);
+  const { data: phrases = [], isLoading } = useQuery({
+    queryKey: PHRASES_KEY,
+    queryFn: fetchPhrases,
+  });
+
+  const addMutation = useMutation({
+    mutationFn: async ({
+      text,
+      tags,
+      notes,
+    }: {
+      text: string;
+      tags: string[];
+      notes: string;
+    }) => {
+      const { data, error } = await supabase
+        .from("phrases")
+        .insert({ text, tags, notes })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: PHRASES_KEY }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({
+      id,
+      updates,
+    }: {
+      id: string;
+      updates: Partial<Omit<Phrase, "id" | "created_at">>;
+    }) => {
+      const { error } = await supabase
+        .from("phrases")
+        .update(updates)
+        .eq("id", id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: PHRASES_KEY }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("phrases").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: PHRASES_KEY }),
+  });
+
+  const addPhrase = (text: string, tags: string[], notes: string) => {
+    addMutation.mutate({ text, tags, notes });
   };
 
-  const addPhrase = useCallback((text: string, tags: string[], notes: string) => {
-    const p: Phrase = { id: crypto.randomUUID(), text, tags, notes, createdAt: Date.now() };
-    sync([p, ...loadPhrases()]);
-  }, []);
+  const updatePhrase = (
+    id: string,
+    updates: Partial<Omit<Phrase, "id" | "created_at">>
+  ) => {
+    updateMutation.mutate({ id, updates });
+  };
 
-  const updatePhrase = useCallback((id: string, updates: Partial<Omit<Phrase, "id" | "createdAt">>) => {
-    const current = loadPhrases();
-    sync(current.map(p => p.id === id ? { ...p, ...updates } : p));
-  }, []);
+  const deletePhrase = (id: string) => {
+    deleteMutation.mutate(id);
+  };
 
-  const deletePhrase = useCallback((id: string) => {
-    sync(loadPhrases().filter(p => p.id !== id));
-  }, []);
-
-  return { phrases, addPhrase, updatePhrase, deletePhrase };
+  return { phrases, isLoading, addPhrase, updatePhrase, deletePhrase };
 }

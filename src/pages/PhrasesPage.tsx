@@ -9,7 +9,7 @@ import { Plus, Search } from "lucide-react";
 import type { Phrase } from "@/types/phrase";
 
 export default function PhrasesPage() {
-  const { phrases, addPhrase, updatePhrase, deletePhrase } = usePhrases();
+  const { phrases, isLoading, addPhrase, updatePhrase, deletePhrase } = usePhrases();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Phrase | null>(null);
   const [search, setSearch] = useState("");
@@ -91,7 +91,9 @@ export default function PhrasesPage() {
         </div>
       )}
 
-      {filtered.length === 0 ? (
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground text-center py-8">Loading...</p>
+      ) : filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-8">
           {phrases.length === 0 ? "No phrases yet. Add your first one!" : "No matches found."}
         </p>

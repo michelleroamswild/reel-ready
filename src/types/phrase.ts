@@ -3,5 +3,5 @@ export interface Phrase {
   text: string;
   tags: string[];
   notes: string;
-  createdAt: number;
+  created_at: string;
 }
