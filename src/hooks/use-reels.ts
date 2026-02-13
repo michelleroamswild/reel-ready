@@ -94,66 +94,97 @@ export function useReels() {
 
       if (reelError) throw reelError;
 
-      // 2. Split phrase into sections by line breaks
-      const sections = phrase.text
-        .split(/\n+/)
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
+      const reelId = (reel as Reel).id;
 
-      // 3. Filter to analyzed videos
-      const analyzedVideos = videos.filter((v) => v.analysis !== null);
+      try {
+        // 2. Filter to analyzed videos
+        const analyzedVideos = videos.filter(
+          (v) => v.analysis !== null && v.analysis !== undefined
+        );
 
-      if (analyzedVideos.length === 0) {
-        throw new Error("No analyzed videos available");
-      }
-
-      // 4. Call edge function for AI suggestions
-      const { data: result, error: fnError } = await supabase.functions.invoke(
-        "suggest-reel-segments",
-        {
-          body: {
-            sections,
-            targetDuration,
-            phraseAnalysis: phrase.analysis ?? null,
-            videos: analyzedVideos.map((v) => ({
-              id: v.id,
-              filename: v.filename,
-              duration_seconds: v.duration_seconds,
-              analysis: v.analysis,
-            })),
-          },
+        if (analyzedVideos.length === 0) {
+          throw new Error(
+            "No analyzed videos available. Analyze at least one video first."
+          );
         }
-      );
 
-      if (fnError) throw fnError;
-      if (result.error) throw new Error(result.error);
+        // 3. Call edge function — AI splits the phrase into beats and assigns clips
+        const { data: result, error: fnError } =
+          await supabase.functions.invoke("suggest-reel-segments", {
+            body: {
+              phraseText: phrase.text,
+              targetDuration,
+              phraseAnalysis: phrase.analysis ?? null,
+              videos: analyzedVideos.map((v) => ({
+                id: v.id,
+                filename: v.filename,
+                duration_seconds: v.duration_seconds,
+                analysis: v.analysis,
+              })),
+            },
+          });
 
-      // 5. Insert segments
-      const segments = (result.segments as Array<{
-        sectionIndex: number;
-        videoId: string;
-        startSeconds: number;
-        endSeconds: number;
-        score: number;
-        reasoning: string;
-      }>).map((seg) => ({
-        reel_id: (reel as Reel).id,
-        video_id: seg.videoId,
-        section_text: sections[seg.sectionIndex] ?? "",
-        section_index: seg.sectionIndex,
-        start_seconds: seg.startSeconds,
-        end_seconds: seg.endSeconds,
-        score: seg.score,
-        reasoning: seg.reasoning,
-      }));
+        if (fnError) throw fnError;
 
-      const { error: segError } = await supabase
-        .from("reel_segments")
-        .insert(segments);
+        // Parse result — handle both parsed JSON and string responses
+        let parsed = result;
+        if (typeof result === "string") {
+          try {
+            parsed = JSON.parse(result);
+          } catch {
+            throw new Error(`Edge function returned invalid JSON: ${result.slice(0, 200)}`);
+          }
+        }
 
-      if (segError) throw segError;
+        if (!parsed) {
+          throw new Error("Edge function returned empty response");
+        }
 
-      return (reel as Reel).id;
+        if (parsed.error) {
+          throw new Error(parsed.error);
+        }
+
+        // 4. Extract and validate segments
+        const rawSegments = parsed.segments as Array<Record<string, unknown>> | undefined;
+
+        if (!rawSegments || rawSegments.length === 0) {
+          throw new Error("AI returned no segments");
+        }
+
+        const segments = rawSegments.map((seg) => ({
+          reel_id: reelId,
+          video_id: (seg.videoId ?? seg.video_id) as string,
+          section_text: (seg.sectionText ?? seg.section_text ?? "") as string,
+          section_index: (seg.sectionIndex ?? seg.section_index ?? 0) as number,
+          start_seconds: (seg.startSeconds ?? seg.start_seconds ?? 0) as number,
+          end_seconds: (seg.endSeconds ?? seg.end_seconds ?? 5) as number,
+          score: (seg.score ?? null) as number | null,
+          reasoning: (seg.reasoning ?? "") as string,
+        }));
+
+        // Validate video IDs are UUIDs
+        const uuidRegex =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        for (const seg of segments) {
+          if (!uuidRegex.test(seg.video_id)) {
+            throw new Error(
+              `Invalid video_id "${seg.video_id}" — expected UUID. AI may have returned an index instead.`
+            );
+          }
+        }
+
+        const { error: segError } = await supabase
+          .from("reel_segments")
+          .insert(segments);
+
+        if (segError) throw segError;
+
+        return reelId;
+      } catch (err) {
+        // Rollback: delete the reel since segments failed
+        await supabase.from("reels").delete().eq("id", reelId).catch(() => {});
+        throw err;
+      }
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: REELS_KEY }),
   });

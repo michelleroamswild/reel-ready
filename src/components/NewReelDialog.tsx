@@ -28,6 +28,7 @@ interface Props {
   phrases: Phrase[];
   onSubmit: (phrase: Phrase, title: string, targetDuration: number) => void;
   isSubmitting: boolean;
+  initialPhrase?: Phrase | null;
 }
 
 export function NewReelDialog({
@@ -36,6 +37,7 @@ export function NewReelDialog({
   phrases,
   onSubmit,
   isSubmitting,
+  initialPhrase,
 }: Props) {
   const [step, setStep] = useState<Step>("select-phrase");
   const [selectedPhrase, setSelectedPhrase] = useState<Phrase | null>(null);
@@ -44,25 +46,24 @@ export function NewReelDialog({
 
   useEffect(() => {
     if (open) {
-      setStep("select-phrase");
-      setSelectedPhrase(null);
-      setTitle("");
+      if (initialPhrase) {
+        setSelectedPhrase(initialPhrase);
+        setTitle(initialPhrase.text.split("\n")[0].slice(0, 40));
+        setStep("configure");
+      } else {
+        setStep("select-phrase");
+        setSelectedPhrase(null);
+        setTitle("");
+      }
       setDuration(30);
     }
-  }, [open]);
+  }, [open, initialPhrase]);
 
   const handleSelectPhrase = (phrase: Phrase) => {
     setSelectedPhrase(phrase);
     setTitle(phrase.text.split("\n")[0].slice(0, 40));
     setStep("configure");
   };
-
-  const sectionCount = selectedPhrase
-    ? selectedPhrase.text
-        .split(/\n+/)
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0).length
-    : 0;
 
   const handleSubmit = () => {
     if (!selectedPhrase) return;
@@ -134,7 +135,7 @@ export function NewReelDialog({
                   {selectedPhrase.text}
                 </p>
                 <p className="text-xs text-muted-foreground mt-2">
-                  {sectionCount} section{sectionCount !== 1 ? "s" : ""} detected
+                  AI will split this into visual beats
                 </p>
               </div>
 

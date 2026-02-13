@@ -12,16 +12,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { PencilSimple, Trash, Sparkle } from "@phosphor-icons/react";
+import { PencilSimple, Trash, Sparkle, FilmStrip } from "@phosphor-icons/react";
 
 interface Props {
   phrase: Phrase;
   onEdit: (phrase: Phrase) => void;
   onDelete: (id: string) => void;
   onFindMatches?: (phrase: Phrase) => void;
+  onBuildReel?: (phrase: Phrase) => void;
 }
 
-export function PhraseCard({ phrase, onEdit, onDelete, onFindMatches }: Props) {
+export function PhraseCard({ phrase, onEdit, onDelete, onFindMatches, onBuildReel }: Props) {
   const [showDelete, setShowDelete] = useState(false);
 
   return (
@@ -41,15 +42,20 @@ export function PhraseCard({ phrase, onEdit, onDelete, onFindMatches }: Props) {
           <p className="text-xs text-muted-foreground">{phrase.notes}</p>
         )}
         <div className="flex justify-end gap-1 pt-1">
+          {onBuildReel && (
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onBuildReel(phrase)} title="Build Reel">
+              <FilmStrip className="h-3.5 w-3.5" />
+            </Button>
+          )}
           {onFindMatches && (
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onFindMatches(phrase)}>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onFindMatches(phrase)} title="Find Matches">
               <Sparkle className="h-3.5 w-3.5" />
             </Button>
           )}
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(phrase)}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(phrase)} title="Edit">
             <PencilSimple className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setShowDelete(true)}>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setShowDelete(true)} title="Delete">
             <Trash className="h-3.5 w-3.5" />
           </Button>
         </div>

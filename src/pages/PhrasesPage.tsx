@@ -1,11 +1,14 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { usePhrases } from "@/hooks/use-phrases";
 import { useVideos } from "@/hooks/use-videos";
 import { useMatches } from "@/hooks/use-matches";
+import { useReels } from "@/hooks/use-reels";
 import { PhraseCard } from "@/components/PhraseCard";
 import { PhraseForm } from "@/components/PhraseForm";
 import { BulkPhraseDialog } from "@/components/BulkPhraseDialog";
 import { SuggestMatchesDialog } from "@/components/SuggestMatchesDialog";
+import { NewReelDialog } from "@/components/NewReelDialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,19 +18,24 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useToast } from "@/hooks/use-toast";
 import { Plus, CaretDown, TextT, ListPlus, MagnifyingGlass } from "@phosphor-icons/react";
 import type { Phrase } from "@/types/phrase";
 
 export default function PhrasesPage() {
+  const navigate = useNavigate();
   const { phrases, isLoading, addPhrase, updatePhrase, deletePhrase } = usePhrases();
   const { videos } = useVideos();
   const { saveMatch } = useMatches();
+  const { createReel, isCreating } = useReels();
+  const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Phrase | null>(null);
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [matchPhrase, setMatchPhrase] = useState<Phrase | null>(null);
   const [showBulk, setShowBulk] = useState(false);
+  const [reelPhrase, setReelPhrase] = useState<Phrase | null>(null);
 
   const allTags = useMemo(() => {
     const s = new Set<string>();
@@ -65,6 +73,21 @@ export default function PhrasesPage() {
   const handleCancel = () => {
     setShowForm(false);
     setEditing(null);
+  };
+
+  const handleBuildReel = async (phrase: Phrase, title: string, targetDuration: number) => {
+    try {
+      const reelId = await createReel({ phrase, title, targetDuration, videos });
+      setReelPhrase(null);
+      navigate(`/reels/${reelId}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Something went wrong";
+      toast({
+        variant: "destructive",
+        title: "Failed to build reel",
+        description: message,
+      });
+    }
   };
 
   return (
@@ -136,6 +159,7 @@ export default function PhrasesPage() {
               onEdit={handleEdit}
               onDelete={deletePhrase}
               onFindMatches={setMatchPhrase}
+              onBuildReel={setReelPhrase}
             />
           ))}
         </div>
@@ -154,6 +178,15 @@ export default function PhrasesPage() {
         open={showBulk}
         onOpenChange={setShowBulk}
         onSubmit={(items) => items.forEach((p) => addPhrase(p.text, p.tags, p.notes))}
+      />
+
+      <NewReelDialog
+        open={reelPhrase !== null}
+        onOpenChange={(open) => !open && setReelPhrase(null)}
+        phrases={phrases}
+        initialPhrase={reelPhrase}
+        onSubmit={handleBuildReel}
+        isSubmitting={isCreating}
       />
     </div>
   );

@@ -16,6 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 import { VideoCamera, Plus, Trash } from "@phosphor-icons/react";
 import type { ReelWithDetails } from "@/types/reel";
 import type { Phrase } from "@/types/phrase";
@@ -25,6 +26,7 @@ export default function ReelsPage() {
   const { reels, isLoading, createReel, isCreating, deleteReel } = useReels();
   const { phrases } = usePhrases();
   const { videos } = useVideos();
+  const { toast } = useToast();
   const [showDialog, setShowDialog] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ReelWithDetails | null>(null);
 
@@ -34,7 +36,13 @@ export default function ReelsPage() {
       setShowDialog(false);
       navigate(`/reels/${reelId}`);
     } catch (err) {
-      console.error("Failed to create reel:", err);
+      const message =
+        err instanceof Error ? err.message : "Something went wrong";
+      toast({
+        variant: "destructive",
+        title: "Failed to build reel",
+        description: message,
+      });
     }
   };
 

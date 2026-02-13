@@ -46,12 +46,12 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { sections, targetDuration, phraseAnalysis, videos } =
+    const { phraseText, targetDuration, phraseAnalysis, videos } =
       await req.json();
 
-    if (!sections?.length || !videos?.length) {
+    if (!phraseText || !videos?.length) {
       return new Response(
-        JSON.stringify({ error: "sections and videos are required" }),
+        JSON.stringify({ error: "phraseText and videos are required" }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -81,9 +81,9 @@ Deno.serve(async (req) => {
 
     // Build video descriptions
     const videoDescriptions = analyzedVideos
-      .map((v, i) => {
+      .map((v) => {
         const a = v.analysis!;
-        let desc = `Video ${i + 1} (id: ${v.id}, file: ${v.filename}, duration: ${v.duration_seconds ?? "unknown"}s):
+        let desc = `Video [videoId="${v.id}"] (file: ${v.filename}, duration: ${v.duration_seconds ?? "unknown"}s):
   Mood: ${a.mood}
   Energy: ${a.energy}
   Visuals: ${a.visuals}
@@ -107,11 +107,6 @@ Deno.serve(async (req) => {
       })
       .join("\n\n");
 
-    // Build sections list
-    const sectionsList = (sections as string[])
-      .map((text: string, i: number) => `Section ${i + 1}: "${text}"`)
-      .join("\n");
-
     // Phrase analysis context
     let phraseContext = "";
     if (pa) {
@@ -124,47 +119,52 @@ Deno.serve(async (req) => {
   Keywords: ${pa.keywords.join(", ")}`;
     }
 
-    const prompt = `You are a creative director building a reel storyboard for short-form social media (TikTok/Reels/Shorts). Your job is to create a VISUALLY DYNAMIC reel that keeps viewers engaged by using a VARIETY of clips.
+    // Suggest a good beat count based on duration and video count
+    const suggestedBeats = Math.max(2, Math.min(
+      analyzedVideos.length,
+      Math.ceil(targetDuration / 5)
+    ));
 
-Target total duration: ${targetDuration} seconds across ${sections.length} sections.
+    const prompt = `You are a creative director building a reel storyboard for short-form social media (TikTok/Reels/Shorts). Your job is to pick visually dynamic video clips to stitch together behind a text overlay.
+
+Target total duration: ${targetDuration} seconds.
 ${phraseContext}
 
-Sections of the phrase (split by line breaks):
-${sectionsList}
+PHRASE TEXT (shown as a single overlay across all clips):
+"${phraseText}"
 
 Available video clips (${analyzedVideos.length} total):
 ${videoDescriptions}
 
+YOUR TASK — PICK ${suggestedBeats} TO ${suggestedBeats + 2} VIDEO CLIPS:
+Select clips that look great together as a montage behind the phrase text. The FULL phrase text will be displayed on every clip — do NOT split or change the text.
+
 CRITICAL RULES:
-1. **MAXIMIZE VARIETY**: You MUST use as many DIFFERENT videos as possible. NEVER use the same video for more than one section unless there are fewer videos than sections. If there are ${analyzedVideos.length} videos and ${sections.length} sections, aim to use at least ${Math.min(analyzedVideos.length, sections.length)} different videos.
-2. **SECTION-SPECIFIC MATCHING**: For each section, analyze the specific words and imagery they evoke. Match based on:
-   - Literal visual matches (e.g. "sky" → aerial/sky footage, "smile" → close-up faces)
-   - Emotional tone per line (a sad line needs somber footage, an energetic line needs dynamic footage)
-   - Scene tags and visual content alignment with section keywords
-   - Energy arc: if the phrase builds intensity, match clips that escalate in energy
-3. **SMART TIMESTAMPS**: Pick the most visually interesting portion of each video. Avoid starting at 0s when the middle or end has better content. Consider the video's structure and pacing notes.
-4. **PACING**: Distribute ${targetDuration}s across sections. Short punchy lines get 2-4s. Longer emotional lines get 4-8s. Climactic lines get the longest segments.
+1. **MAXIMIZE VARIETY**: Use as many DIFFERENT videos as possible. NEVER repeat a video unless you have more segments than videos.
+2. **MATCH VISUALS TO PHRASE**: Each clip should visually complement the mood/energy of the phrase.
+3. **SMART TIMESTAMPS**: Pick the most visually interesting portion of each video. Don't always start at 0s.
+4. **PACING**: Segments should be 3-8s each. Total should be close to ${targetDuration}s.
 5. Each segment must be at least 2 seconds long.
 6. startSeconds and endSeconds must be within the video's actual duration.
-
-Think step by step:
-- First, identify the key emotion/visual for EACH section independently
-- Then, find the BEST unique video match for each section
-- Finally, pick the most compelling timestamp range within that video
+7. **sectionText MUST be the FULL phrase text for every segment** — copy it exactly as provided above.
 
 Respond with a JSON array in this exact format:
 [
   {
     "sectionIndex": 0,
-    "videoId": "<the video id>",
+    "sectionText": "${phraseText.replace(/"/g, '\\"')}",
+    "videoId": "<MUST be the exact UUID from videoId= above>",
     "startSeconds": <number>,
     "endSeconds": <number>,
-    "score": <0-100 how well this clip matches this section>,
-    "reasoning": "<1-2 sentences: what specific visual/mood in this clip matches this specific section text>"
+    "score": <0-100>,
+    "reasoning": "<why this clip fits the phrase visually>"
   }
 ]
 
-Return one entry per section, in order. Only return the JSON array, nothing else.`;
+IMPORTANT: "videoId" must be the full UUID from the video listing (the value inside videoId="..."). Do NOT use a number or index.
+IMPORTANT: "sectionText" must be the FULL phrase "${phraseText.replace(/"/g, '\\"')}" for EVERY segment. Never split or shorten it.
+
+Return one entry per segment, in order. Only return the JSON array.`;
 
     const geminiResponse = await fetch(GEMINI_URL, {
       method: "POST",

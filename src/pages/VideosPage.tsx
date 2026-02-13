@@ -234,9 +234,10 @@ export default function VideosPage() {
                   <Trash className="h-3 w-3" />
                 </Button>
               </div>
-              {/* Filename */}
+              {/* Filename + size */}
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-1.5 pb-1 pt-4">
                 <p className="text-[10px] text-white truncate">{v.filename}</p>
+                <p className="text-[9px] text-white/70">{formatSize(v.size_bytes)}</p>
               </div>
             </div>
           ))}

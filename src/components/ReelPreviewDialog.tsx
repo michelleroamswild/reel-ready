@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Play } from "@phosphor-icons/react";
 import type { ReelSegmentWithVideo } from "@/types/reel";
@@ -19,86 +20,81 @@ export function ReelPreviewDialog({ open, onOpenChange, segments }: Props) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [finished, setFinished] = useState(false);
+  const [videoKey, setVideoKey] = useState(0);
 
   const current = segments[currentIndex];
 
-  // Reset state when dialog opens
+  // Reset when dialog opens
   useEffect(() => {
     if (open) {
       setCurrentIndex(0);
       setIsPlaying(false);
       setFinished(false);
+      setVideoKey((k) => k + 1);
     }
   }, [open]);
 
-  // Load segment into video element when index changes
+  // Force remount video when segment changes (but not on initial open)
+  const prevIndex = useRef(0);
   useEffect(() => {
-    if (!open || !current || !videoRef.current) return;
-
-    const video = videoRef.current;
-    const segmentUrl = current.video.url;
-
-    // Only change src if it's a different video
-    if (!video.src.includes(segmentUrl.split("?")[0]?.split("/").pop() ?? "__none__")) {
-      video.src = segmentUrl;
-      video.load();
+    if (open && prevIndex.current !== currentIndex) {
+      setVideoKey((k) => k + 1);
     }
-
-    const handleCanPlay = () => {
-      video.currentTime = current.start_seconds;
-    };
-
-    const handleSeeked = () => {
-      if (isPlaying) {
-        video.play().catch(() => {});
-      }
-    };
-
-    video.addEventListener("canplay", handleCanPlay, { once: true });
-    video.addEventListener("seeked", handleSeeked, { once: true });
-
-    // If src didn't change, just seek
-    if (video.readyState >= 2) {
-      video.currentTime = current.start_seconds;
-    }
-
-    return () => {
-      video.removeEventListener("canplay", handleCanPlay);
-      video.removeEventListener("seeked", handleSeeked);
-    };
-  }, [currentIndex, open, current]);
-
-  // Monitor playback to pause at end_seconds and advance
-  const handleTimeUpdate = useCallback(() => {
-    if (!current || !videoRef.current) return;
-    if (videoRef.current.currentTime >= current.end_seconds) {
-      videoRef.current.pause();
-
-      if (currentIndex < segments.length - 1) {
-        setCurrentIndex((prev) => prev + 1);
-      } else {
-        setIsPlaying(false);
-        setFinished(true);
-      }
-    }
-  }, [current, currentIndex, segments.length]);
+    prevIndex.current = currentIndex;
+  }, [currentIndex, open]);
 
   const handlePlay = () => {
-    if (!videoRef.current || !current) return;
+    const video = videoRef.current;
+    if (!video || segments.length === 0) return;
 
     if (finished) {
-      setCurrentIndex(0);
       setFinished(false);
+      setIsPlaying(true);
+      setCurrentIndex(0);
+      return;
     }
 
     setIsPlaying(true);
-    videoRef.current.currentTime = current.start_seconds;
-    videoRef.current.play().catch(() => {});
+    video.play().catch((err) => {
+      console.error("Play failed:", err);
+      setIsPlaying(false);
+    });
   };
 
   const handlePause = () => {
     videoRef.current?.pause();
     setIsPlaying(false);
+  };
+
+  const handleTimeUpdate = () => {
+    const video = videoRef.current;
+    const seg = segments[currentIndex];
+    if (!video || !seg) return;
+
+    if (video.currentTime >= seg.end_seconds) {
+      video.pause();
+      if (currentIndex < segments.length - 1) {
+        setIsPlaying(true); // keep playing into next segment
+        setCurrentIndex((i) => i + 1);
+      } else {
+        setIsPlaying(false);
+        setFinished(true);
+      }
+    }
+  };
+
+  // Auto-play when a NEW video loads (segment transition while playing)
+  const handleLoadedData = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    // The #t= fragment in the src already positions the video.
+    // If we were playing (auto-advance), start playing the new segment.
+    if (isPlaying) {
+      video.play().catch((err) => {
+        console.error("Auto-play failed:", err);
+        setIsPlaying(false);
+      });
+    }
   };
 
   if (segments.length === 0) return null;
@@ -108,25 +104,24 @@ export function ReelPreviewDialog({ open, onOpenChange, segments }: Props) {
       <DialogContent className="p-0 overflow-hidden max-w-sm">
         <DialogHeader className="sr-only">
           <DialogTitle>Reel Preview</DialogTitle>
+          <DialogDescription>Sequential preview of reel segments</DialogDescription>
         </DialogHeader>
 
         <div className="relative bg-black" style={{ aspectRatio: "9/16" }}>
-          {/* Video element */}
-          <video
-            ref={videoRef}
-            className="w-full h-full object-cover"
-            playsInline
-            onTimeUpdate={handleTimeUpdate}
-            onPlay={() => setIsPlaying(true)}
-            onPause={() => {
-              // Only set not playing if we intentionally paused
-              if (videoRef.current && current && videoRef.current.currentTime < current.end_seconds - 0.1) {
-                setIsPlaying(false);
-              }
-            }}
-          />
+          {current && (
+            <video
+              key={videoKey}
+              ref={videoRef}
+              src={`${current.video.url}#t=${current.start_seconds}`}
+              className="w-full h-full object-cover"
+              playsInline
+              preload="auto"
+              onLoadedData={handleLoadedData}
+              onTimeUpdate={handleTimeUpdate}
+            />
+          )}
 
-          {/* Play/pause overlay */}
+          {/* Play overlay */}
           {!isPlaying && (
             <div
               className="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer"
@@ -138,7 +133,7 @@ export function ReelPreviewDialog({ open, onOpenChange, segments }: Props) {
             </div>
           )}
 
-          {/* Tap to pause when playing */}
+          {/* Tap to pause */}
           {isPlaying && (
             <div
               className="absolute inset-0 cursor-pointer"
@@ -146,10 +141,10 @@ export function ReelPreviewDialog({ open, onOpenChange, segments }: Props) {
             />
           )}
 
-          {/* Section text overlay */}
+          {/* Section text */}
           {current && (
             <div className="absolute bottom-16 left-0 right-0 px-4">
-              <p className="text-white text-sm font-medium text-center drop-shadow-lg">
+              <p className="text-white text-sm font-medium text-center drop-shadow-lg whitespace-pre-line">
                 {current.section_text}
               </p>
             </div>
