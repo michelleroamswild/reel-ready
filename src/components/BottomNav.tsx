@@ -1,11 +1,12 @@
 import { NavLink } from "react-router-dom";
-import { ChatText, FilmStrip, Sparkle } from "@phosphor-icons/react";
+import { ChatText, FilmStrip, Sparkle, VideoCamera } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 const links = [
   { to: "/", label: "Phrases", icon: ChatText },
   { to: "/videos", label: "Videos", icon: FilmStrip },
   { to: "/matches", label: "Matches", icon: Sparkle },
+  { to: "/reels", label: "Reels", icon: VideoCamera },
 ];
 
 export function BottomNav() {

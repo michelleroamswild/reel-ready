@@ -4,11 +4,18 @@ import { useVideos } from "@/hooks/use-videos";
 import { useMatches } from "@/hooks/use-matches";
 import { PhraseCard } from "@/components/PhraseCard";
 import { PhraseForm } from "@/components/PhraseForm";
+import { BulkPhraseDialog } from "@/components/BulkPhraseDialog";
 import { SuggestMatchesDialog } from "@/components/SuggestMatchesDialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MagnifyingGlass } from "@phosphor-icons/react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Plus, CaretDown, TextT, ListPlus, MagnifyingGlass } from "@phosphor-icons/react";
 import type { Phrase } from "@/types/phrase";
 
 export default function PhrasesPage() {
@@ -20,6 +27,7 @@ export default function PhrasesPage() {
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [matchPhrase, setMatchPhrase] = useState<Phrase | null>(null);
+  const [showBulk, setShowBulk] = useState(false);
 
   const allTags = useMemo(() => {
     const s = new Set<string>();
@@ -63,9 +71,25 @@ export default function PhrasesPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Phrases</h1>
-        <Button size="sm" onClick={() => { setEditing(null); setShowForm(true); }}>
-          <Plus className="h-4 w-4 mr-1" /> New
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm">
+              <Plus className="h-4 w-4 mr-1" />
+              New
+              <CaretDown className="h-3 w-3 ml-1" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => { setEditing(null); setShowForm(true); }}>
+              <TextT className="h-4 w-4 mr-2" />
+              Single phrase
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowBulk(true)}>
+              <ListPlus className="h-4 w-4 mr-2" />
+              Bulk add
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {showForm && (
@@ -124,6 +148,12 @@ export default function PhrasesPage() {
         phrases={phrases}
         videos={videos}
         onSaveMatch={saveMatch}
+      />
+
+      <BulkPhraseDialog
+        open={showBulk}
+        onOpenChange={setShowBulk}
+        onSubmit={(items) => items.forEach((p) => addPhrase(p.text, p.tags, p.notes))}
       />
     </div>
   );

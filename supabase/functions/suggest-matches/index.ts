@@ -7,16 +7,36 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+interface VideoAnalysis {
+  mood: string;
+  energy: string;
+  visuals: string;
+  sceneTags: string[];
+  summary: string;
+  moodScore?: number;
+  energyScore?: number;
+  pacing?: string;
+  colorPalette?: string[];
+  shotTypes?: string[];
+  dominantMotion?: string;
+  structure?: string;
+  audioNotes?: string;
+}
+
+interface PhraseAnalysis {
+  tone: string;
+  toneScore: number;
+  energyLevel: number;
+  idealPacing: string;
+  emotionalArc: string;
+  suggestedVisuals: string[];
+  keywords: string[];
+}
+
 interface VideoInput {
   id: string;
   filename: string;
-  analysis: {
-    mood: string;
-    energy: string;
-    visuals: string;
-    sceneTags: string[];
-    summary: string;
-  } | null;
+  analysis: VideoAnalysis | null;
 }
 
 Deno.serve(async (req) => {
@@ -25,7 +45,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { phraseText, phraseTags, videos } = await req.json();
+    const { phraseText, phraseTags, phraseAnalysis, videos } = await req.json();
 
     if (!phraseText || !videos?.length) {
       return new Response(
@@ -54,29 +74,63 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Build a single prompt with all video descriptions
+    const pa = phraseAnalysis as PhraseAnalysis | null;
+
+    // Build video descriptions with structured data
     const videoDescriptions = analyzedVideos
-      .map(
-        (v, i) =>
-          `Video ${i + 1} (id: ${v.id}, file: ${v.filename}):
-  Mood: ${v.analysis!.mood}
-  Energy: ${v.analysis!.energy}
-  Visuals: ${v.analysis!.visuals}
-  Tags: ${v.analysis!.sceneTags.join(", ")}
-  Summary: ${v.analysis!.summary}`
-      )
+      .map((v, i) => {
+        const a = v.analysis!;
+        let desc = `Video ${i + 1} (id: ${v.id}, file: ${v.filename}):
+  Mood: ${a.mood}
+  Energy: ${a.energy}
+  Visuals: ${a.visuals}
+  Tags: ${a.sceneTags.join(", ")}
+  Summary: ${a.summary}`;
+
+        // Add structured fields if available
+        if (a.moodScore != null) desc += `\n  Mood Score: ${a.moodScore} (scale: -5 to +5)`;
+        if (a.energyScore != null) desc += `\n  Energy Score: ${a.energyScore} (scale: 1-10)`;
+        if (a.pacing) desc += `\n  Pacing: ${a.pacing}`;
+        if (a.colorPalette?.length) desc += `\n  Colors: ${a.colorPalette.join(", ")}`;
+        if (a.shotTypes?.length) desc += `\n  Shot Types: ${a.shotTypes.join(", ")}`;
+        if (a.dominantMotion) desc += `\n  Motion: ${a.dominantMotion}`;
+        if (a.structure) desc += `\n  Structure: ${a.structure}`;
+        if (a.audioNotes) desc += `\n  Audio: ${a.audioNotes}`;
+
+        return desc;
+      })
       .join("\n\n");
+
+    // Build phrase section with structured analysis if available
+    let phraseSection = `Phrase: "${phraseText}"`;
+    if (phraseTags?.length > 0) {
+      phraseSection += `\nPhrase tags: ${phraseTags.join(", ")}`;
+    }
+    if (pa) {
+      phraseSection += `\n\nPhrase Analysis:
+  Tone: ${pa.tone}
+  Tone Score: ${pa.toneScore} (scale: -5 to +5, same as video moodScore)
+  Energy Level: ${pa.energyLevel} (scale: 1-10, same as video energyScore)
+  Ideal Pacing: ${pa.idealPacing}
+  Emotional Arc: ${pa.emotionalArc}
+  Suggested Visuals: ${pa.suggestedVisuals.join(", ")}
+  Keywords: ${pa.keywords.join(", ")}`;
+    }
 
     const prompt = `You are matching a phrase to video clips for short-form social media content (TikTok/Reels/Shorts).
 
-Phrase: "${phraseText}"
-${phraseTags.length > 0 ? `Phrase tags: ${phraseTags.join(", ")}` : ""}
+${phraseSection}
 
-Here are the available videos with their AI-generated descriptions:
+Here are the available videos with their AI-generated analysis:
 
 ${videoDescriptions}
 
-For EACH video, rate how well it matches the phrase from 0-100. Consider mood alignment, energy/pacing match, visual storytelling potential, and how the phrase would feel overlaid on this video.
+For EACH video, rate how well it matches the phrase from 0-100. Consider:
+- Mood/tone alignment (compare moodScore vs toneScore if available — closer = better)
+- Energy/pacing match (compare energyScore vs energyLevel if available — closer = better)
+- Visual storytelling potential (do the visuals complement the phrase content?)
+- Structural compatibility (does the video's emotional arc match the phrase's arc?)
+- Color and atmosphere fit
 
 Respond with a JSON array in this exact format:
 [

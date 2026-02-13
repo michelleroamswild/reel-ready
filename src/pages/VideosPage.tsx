@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useVideos } from "@/hooks/use-videos";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,13 +10,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import { FilmStrip, UploadSimple, CaretDown, FileVideo, CopySimple, Trash, ArrowsClockwise, Sparkle, Info } from "@phosphor-icons/react";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { FilmStrip, UploadSimple, CaretDown, FileVideo, CopySimple, Trash, ArrowsClockwise, Sparkle, ArrowClockwise } from "@phosphor-icons/react";
 import type { Video } from "@/types/video";
 
 interface UploadProgress {
@@ -24,13 +28,14 @@ interface UploadProgress {
 }
 
 export default function VideosPage() {
+  const navigate = useNavigate();
   const { videos, isLoading, uploadVideo, isUploading, analyzeVideo, isAnalyzing, deleteVideo } = useVideos();
   const singleInputRef = useRef<HTMLInputElement>(null);
   const bulkInputRef = useRef<HTMLInputElement>(null);
   const [bulkProgress, setBulkProgress] = useState<UploadProgress[]>([]);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
-  const [infoVideo, setInfoVideo] = useState<Video | null>(null);
+  const [deleteVideo_, setDeleteVideo_] = useState<Video | null>(null);
   const isBulkUploading = bulkProgress.length > 0;
 
   const handleSingleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -189,7 +194,7 @@ export default function VideosPage() {
             <div
               key={v.id}
               className="relative rounded-lg border bg-card overflow-hidden cursor-pointer group"
-              onClick={() => setInfoVideo(v)}
+              onClick={() => navigate(`/videos/${v.id}`)}
             >
               <video
                 src={v.url}
@@ -198,45 +203,37 @@ export default function VideosPage() {
               />
               {/* Overlay actions */}
               <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                {!v.analysis && (
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    className="h-6 w-6 rounded-full bg-black/50 hover:bg-black/70 text-white"
-                    disabled={isAnalyzing && analyzingId === v.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleAnalyze(v);
-                    }}
-                    title="Analyze with AI"
-                  >
-                    {isAnalyzing && analyzingId === v.id ? (
-                      <ArrowsClockwise className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <Sparkle className="h-3 w-3" />
-                    )}
-                  </Button>
-                )}
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  className="h-6 w-6 rounded-full bg-black/50 hover:bg-black/70 text-white"
+                  disabled={isAnalyzing && analyzingId === v.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleAnalyze(v);
+                  }}
+                  title={v.analysis ? "Re-analyze with AI" : "Analyze with AI"}
+                >
+                  {isAnalyzing && analyzingId === v.id ? (
+                    <ArrowsClockwise className="h-3 w-3 animate-spin" />
+                  ) : v.analysis ? (
+                    <ArrowClockwise className="h-3 w-3" />
+                  ) : (
+                    <Sparkle className="h-3 w-3" />
+                  )}
+                </Button>
                 <Button
                   variant="secondary"
                   size="icon"
                   className="h-6 w-6 rounded-full bg-black/50 hover:bg-black/70 text-white"
                   onClick={(e) => {
                     e.stopPropagation();
-                    deleteVideo(v.id);
+                    setDeleteVideo_(v);
                   }}
                 >
                   <Trash className="h-3 w-3" />
                 </Button>
               </div>
-              {/* Analysis indicator */}
-              {v.analysis && (
-                <div className="absolute bottom-1 left-1">
-                  <div className="h-5 w-5 rounded-full bg-black/50 flex items-center justify-center">
-                    <Info className="h-3 w-3 text-white" />
-                  </div>
-                </div>
-              )}
               {/* Filename */}
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-1.5 pb-1 pt-4">
                 <p className="text-[10px] text-white truncate">{v.filename}</p>
@@ -246,45 +243,28 @@ export default function VideosPage() {
         </div>
       )}
 
-      {/* Analysis Info Modal */}
-      <Dialog open={infoVideo !== null} onOpenChange={(open) => !open && setInfoVideo(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{infoVideo?.filename}</DialogTitle>
-            <DialogDescription>AI Video Analysis</DialogDescription>
-          </DialogHeader>
-          {infoVideo?.analysis && (
-            <div className="space-y-4">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Summary</p>
-                <p className="text-sm">{infoVideo.analysis.summary}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Mood</p>
-                <p className="text-sm">{infoVideo.analysis.mood}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Energy</p>
-                <p className="text-sm">{infoVideo.analysis.energy}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Visuals</p>
-                <p className="text-sm">{infoVideo.analysis.visuals}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Scene Tags</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {infoVideo.analysis.sceneTags.map((tag) => (
-                    <Badge key={tag} variant="secondary" className="text-xs">
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <AlertDialog open={deleteVideo_ !== null} onOpenChange={(open) => !open && setDeleteVideo_(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete video?</AlertDialogTitle>
+            <AlertDialogDescription>
+              "{deleteVideo_?.filename}" will be permanently deleted. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteVideo_) deleteVideo(deleteVideo_.id);
+                setDeleteVideo_(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

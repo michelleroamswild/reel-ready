@@ -1,21 +1,24 @@
 import type { AiSuggestion } from "@/types/match";
 import type { Video } from "@/types/video";
 import { Badge } from "@/components/ui/badge";
+import { ArrowsClockwise } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 interface Props {
   suggestion: AiSuggestion;
   video: Video;
   selected: boolean;
+  refining?: boolean;
   onToggle: () => void;
 }
 
-export function SuggestionCard({ suggestion, video, selected, onToggle }: Props) {
+export function SuggestionCard({ suggestion, video, selected, refining, onToggle }: Props) {
   return (
     <div
       className={cn(
         "rounded-lg border bg-card p-3 space-y-2 cursor-pointer transition-colors",
-        selected && "ring-2 ring-primary"
+        selected && "ring-2 ring-primary",
+        refining && "border-primary/40"
       )}
       onClick={onToggle}
     >
@@ -26,10 +29,21 @@ export function SuggestionCard({ suggestion, video, selected, onToggle }: Props)
       />
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium truncate">{video.filename}</p>
-        <Badge variant={suggestion.score >= 75 ? "default" : "secondary"}>
-          {suggestion.score}%
-        </Badge>
+        <div className="flex items-center gap-1.5">
+          {refining && (
+            <ArrowsClockwise className="h-3.5 w-3.5 text-primary animate-spin" />
+          )}
+          <Badge
+            variant={suggestion.score >= 75 ? "default" : "secondary"}
+            className={cn(refining && "opacity-60")}
+          >
+            {suggestion.score}%
+          </Badge>
+        </div>
       </div>
+      {refining && (
+        <p className="text-xs text-primary font-medium">Refining with deep video analysis...</p>
+      )}
       <p className="text-xs text-muted-foreground">{suggestion.reasoning}</p>
       <div className="flex flex-wrap gap-1.5">
         {suggestion.moodMatch && (

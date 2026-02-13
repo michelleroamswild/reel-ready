@@ -41,7 +41,7 @@ export function SuggestMatchesDialog({
   const [step, setStep] = useState<Step>("select-phrase");
   const [selectedPhrase, setSelectedPhrase] = useState<Phrase | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const { suggestions, getSuggestions, isAnalyzing, error, reset } =
+  const { suggestions, getSuggestions, isAnalyzing, refiningIds, error, reset } =
     useAiSuggestions();
 
   // Reset state when dialog opens/closes
@@ -62,9 +62,11 @@ export function SuggestMatchesDialog({
   // Trigger analysis when entering analyzing step
   useEffect(() => {
     if (step === "analyzing" && selectedPhrase && videos.length > 0) {
-      getSuggestions({ phrase: selectedPhrase, videos })
-        .then(() => setStep("review"))
-        .catch(() => {});
+      getSuggestions({
+        phrase: selectedPhrase,
+        videos,
+        onPass1Complete: () => setStep("review"),
+      }).catch(() => {});
     }
   }, [step, selectedPhrase]);
 
@@ -92,6 +94,7 @@ export function SuggestMatchesDialog({
   };
 
   const videoMap = new Map(videos.map((v) => [v.id, v]));
+  const hasRefining = refiningIds.size > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -146,11 +149,11 @@ export function SuggestMatchesDialog({
             <div className="flex flex-col items-center space-y-4 py-8">
               <Sparkle className="h-10 w-10 text-primary animate-pulse" />
               <p className="text-sm font-medium">
-                Analyzing {Math.min(videos.length, 5)} videos...
+                Analyzing {videos.filter((v) => v.analysis).length} videos...
               </p>
               <p className="text-xs text-muted-foreground text-center max-w-xs">
-                AI is watching your videos and evaluating mood, energy, and
-                visual style. This usually takes 15-30 seconds.
+                AI is comparing phrase and video analysis data. This usually
+                takes 5-10 seconds.
               </p>
               {error && (
                 <div className="text-center space-y-2">
@@ -178,9 +181,42 @@ export function SuggestMatchesDialog({
             <DialogHeader>
               <DialogTitle>Suggestions</DialogTitle>
               <DialogDescription>
-                Tap to select, then save your matches.
+                {hasRefining
+                  ? "Refining top matches with deep video analysis..."
+                  : "Tap to select, then save your matches."}
               </DialogDescription>
             </DialogHeader>
+            <div className="rounded-lg border bg-muted/50 p-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Matching phrase</p>
+              <p className="text-sm font-medium">{selectedPhrase?.text}</p>
+              {selectedPhrase?.tags && selectedPhrase.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {selectedPhrase.tags.map((t) => (
+                    <Badge key={t} variant="secondary" className="text-xs">
+                      {t}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              {selectedPhrase?.analysis && (
+                <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Looking for</p>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedPhrase.analysis.tone} tone, {selectedPhrase.analysis.energyLevel >= 7 ? "high" : selectedPhrase.analysis.energyLevel >= 4 ? "moderate" : "low"} energy, {selectedPhrase.analysis.idealPacing} pacing
+                    {selectedPhrase.analysis.emotionalArc !== "steady" && ` — ${selectedPhrase.analysis.emotionalArc}`}
+                  </p>
+                  {selectedPhrase.analysis.suggestedVisuals.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {selectedPhrase.analysis.suggestedVisuals.map((v) => (
+                        <Badge key={v} variant="outline" className="text-xs">
+                          {v}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             {suggestions.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">
                 No suggestions found. Try different videos or phrases.
@@ -196,6 +232,7 @@ export function SuggestMatchesDialog({
                       suggestion={s}
                       video={video}
                       selected={selectedIds.has(s.videoId)}
+                      refining={refiningIds.has(s.videoId)}
                       onToggle={() => toggleSelection(s.videoId)}
                     />
                   );
