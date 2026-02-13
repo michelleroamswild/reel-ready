@@ -1,3 +1,11 @@
+export interface VideoAnalysis {
+  mood: string;
+  energy: string;
+  visuals: string;
+  sceneTags: string[];
+  summary: string;
+}
+
 export interface Video {
   id: string;
   filename: string;
@@ -6,5 +14,6 @@ export interface Video {
   size_bytes: number;
   duration_seconds: number | null;
   mime_type: string;
+  analysis: VideoAnalysis | null;
   created_at: string;
 }

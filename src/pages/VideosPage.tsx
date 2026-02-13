@@ -1,13 +1,21 @@
 import { useRef, useState } from "react";
 import { useVideos } from "@/hooks/use-videos";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Film, Upload, ChevronDown, File, Files, Trash2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { FilmStrip, UploadSimple, CaretDown, FileVideo, CopySimple, Trash, ArrowsClockwise, Sparkle, Info } from "@phosphor-icons/react";
 import type { Video } from "@/types/video";
 
 interface UploadProgress {
@@ -16,11 +24,13 @@ interface UploadProgress {
 }
 
 export default function VideosPage() {
-  const { videos, isLoading, uploadVideo, isUploading, deleteVideo } = useVideos();
+  const { videos, isLoading, uploadVideo, isUploading, analyzeVideo, isAnalyzing, deleteVideo } = useVideos();
   const singleInputRef = useRef<HTMLInputElement>(null);
   const bulkInputRef = useRef<HTMLInputElement>(null);
   const [bulkProgress, setBulkProgress] = useState<UploadProgress[]>([]);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [infoVideo, setInfoVideo] = useState<Video | null>(null);
   const isBulkUploading = bulkProgress.length > 0;
 
   const handleSingleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,6 +80,11 @@ export default function VideosPage() {
     if (bulkInputRef.current) bulkInputRef.current.value = "";
   };
 
+  const handleAnalyze = (video: Video) => {
+    setAnalyzingId(video.id);
+    analyzeVideo(video);
+  };
+
   const formatSize = (bytes: number) => {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -84,18 +99,18 @@ export default function VideosPage() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button size="sm" disabled={uploading}>
-              <Upload className="h-4 w-4 mr-1" />
+              <UploadSimple className="h-4 w-4 mr-1" />
               Upload
-              <ChevronDown className="h-3 w-3 ml-1" />
+              <CaretDown className="h-3 w-3 ml-1" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => singleInputRef.current?.click()}>
-              <File className="h-4 w-4 mr-2" />
+              <FileVideo className="h-4 w-4 mr-2" />
               Single video
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => bulkInputRef.current?.click()}>
-              <Files className="h-4 w-4 mr-2" />
+              <CopySimple className="h-4 w-4 mr-2" />
               Bulk upload
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -163,39 +178,113 @@ export default function VideosPage() {
         <p className="text-sm text-muted-foreground text-center py-8">Loading...</p>
       ) : videos.length === 0 && !uploading ? (
         <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
-          <Film className="h-12 w-12 text-muted-foreground" />
+          <FilmStrip className="h-12 w-12 text-muted-foreground" />
           <p className="text-sm text-muted-foreground max-w-xs">
             No videos yet. Upload your first clip!
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-3 gap-2">
           {videos.map((v: Video) => (
-            <div key={v.id} className="rounded-lg border bg-card p-3 space-y-2">
+            <div
+              key={v.id}
+              className="relative rounded-lg border bg-card overflow-hidden cursor-pointer group"
+              onClick={() => setInfoVideo(v)}
+            >
               <video
                 src={v.url}
-                controls
                 preload="metadata"
-                className="w-full rounded-md"
+                className="w-full aspect-[9/16] object-cover"
               />
-              <div className="flex items-center justify-between">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{v.filename}</p>
-                  <p className="text-xs text-muted-foreground">{formatSize(v.size_bytes)}</p>
-                </div>
+              {/* Overlay actions */}
+              <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                {!v.analysis && (
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-6 w-6 rounded-full bg-black/50 hover:bg-black/70 text-white"
+                    disabled={isAnalyzing && analyzingId === v.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAnalyze(v);
+                    }}
+                    title="Analyze with AI"
+                  >
+                    {isAnalyzing && analyzingId === v.id ? (
+                      <ArrowsClockwise className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Sparkle className="h-3 w-3" />
+                    )}
+                  </Button>
+                )}
                 <Button
-                  variant="ghost"
+                  variant="secondary"
                   size="icon"
-                  className="h-8 w-8 text-destructive shrink-0"
-                  onClick={() => deleteVideo(v.id)}
+                  className="h-6 w-6 rounded-full bg-black/50 hover:bg-black/70 text-white"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteVideo(v.id);
+                  }}
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <Trash className="h-3 w-3" />
                 </Button>
+              </div>
+              {/* Analysis indicator */}
+              {v.analysis && (
+                <div className="absolute bottom-1 left-1">
+                  <div className="h-5 w-5 rounded-full bg-black/50 flex items-center justify-center">
+                    <Info className="h-3 w-3 text-white" />
+                  </div>
+                </div>
+              )}
+              {/* Filename */}
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-1.5 pb-1 pt-4">
+                <p className="text-[10px] text-white truncate">{v.filename}</p>
               </div>
             </div>
           ))}
         </div>
       )}
+
+      {/* Analysis Info Modal */}
+      <Dialog open={infoVideo !== null} onOpenChange={(open) => !open && setInfoVideo(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{infoVideo?.filename}</DialogTitle>
+            <DialogDescription>AI Video Analysis</DialogDescription>
+          </DialogHeader>
+          {infoVideo?.analysis && (
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Summary</p>
+                <p className="text-sm">{infoVideo.analysis.summary}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Mood</p>
+                <p className="text-sm">{infoVideo.analysis.mood}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Energy</p>
+                <p className="text-sm">{infoVideo.analysis.energy}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Visuals</p>
+                <p className="text-sm">{infoVideo.analysis.visuals}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Scene Tags</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {infoVideo.analysis.sceneTags.map((tag) => (
+                    <Badge key={tag} variant="secondary" className="text-xs">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

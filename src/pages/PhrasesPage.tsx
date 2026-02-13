@@ -1,19 +1,25 @@
 import { useState, useMemo } from "react";
 import { usePhrases } from "@/hooks/use-phrases";
+import { useVideos } from "@/hooks/use-videos";
+import { useMatches } from "@/hooks/use-matches";
 import { PhraseCard } from "@/components/PhraseCard";
 import { PhraseForm } from "@/components/PhraseForm";
+import { SuggestMatchesDialog } from "@/components/SuggestMatchesDialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search } from "lucide-react";
+import { Plus, MagnifyingGlass } from "@phosphor-icons/react";
 import type { Phrase } from "@/types/phrase";
 
 export default function PhrasesPage() {
   const { phrases, isLoading, addPhrase, updatePhrase, deletePhrase } = usePhrases();
+  const { videos } = useVideos();
+  const { saveMatch } = useMatches();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Phrase | null>(null);
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [matchPhrase, setMatchPhrase] = useState<Phrase | null>(null);
 
   const allTags = useMemo(() => {
     const s = new Set<string>();
@@ -67,7 +73,7 @@ export default function PhrasesPage() {
       )}
 
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder="Search phrases..."
           value={search}
@@ -100,10 +106,25 @@ export default function PhrasesPage() {
       ) : (
         <div className="space-y-3">
           {filtered.map(p => (
-            <PhraseCard key={p.id} phrase={p} onEdit={handleEdit} onDelete={deletePhrase} />
+            <PhraseCard
+              key={p.id}
+              phrase={p}
+              onEdit={handleEdit}
+              onDelete={deletePhrase}
+              onFindMatches={setMatchPhrase}
+            />
           ))}
         </div>
       )}
+
+      <SuggestMatchesDialog
+        open={matchPhrase !== null}
+        onOpenChange={(open) => !open && setMatchPhrase(null)}
+        initialPhrase={matchPhrase}
+        phrases={phrases}
+        videos={videos}
+        onSaveMatch={saveMatch}
+      />
     </div>
   );
 }

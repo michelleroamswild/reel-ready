@@ -1,11 +1,11 @@
 import { NavLink } from "react-router-dom";
-import { MessageSquareText, Film, Sparkles } from "lucide-react";
+import { ChatText, FilmStrip, Sparkle } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 const links = [
-  { to: "/", label: "Phrases", icon: MessageSquareText },
-  { to: "/videos", label: "Videos", icon: Film },
-  { to: "/matches", label: "Matches", icon: Sparkles },
+  { to: "/", label: "Phrases", icon: ChatText },
+  { to: "/videos", label: "Videos", icon: FilmStrip },
+  { to: "/matches", label: "Matches", icon: Sparkle },
 ];
 
 export function BottomNav() {
