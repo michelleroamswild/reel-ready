@@ -56,6 +56,7 @@ export interface ReelSegmentWithVideo extends ReelSegment {
     filename: string;
     url: string;
     duration_seconds: number | null;
+    thumbnail_url: string | null;
   };
 }
 

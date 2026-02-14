@@ -322,6 +322,7 @@ export default function ReelsPage() {
                       {firstSeg?.video?.url ? (
                         <VideoThumbnail
                           src={`${firstSeg.video.url}#t=${firstSeg.start_seconds}`}
+                          thumbnailUrl={firstSeg.video.thumbnail_url}
                           className="w-full h-full"
                         />
                       ) : (
@@ -450,6 +451,7 @@ export default function ReelsPage() {
                         {firstSeg?.video?.url ? (
                           <VideoThumbnail
                             src={`${firstSeg.video.url}#t=${firstSeg.start_seconds}`}
+                            thumbnailUrl={firstSeg.video.thumbnail_url}
                             className="w-full aspect-[9/16]"
                             iconSize="sm"
                           />

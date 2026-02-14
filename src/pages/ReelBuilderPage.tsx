@@ -113,8 +113,8 @@ export default function ReelBuilderPage() {
     const seg = segments[currentIndex];
     if (!video || !seg) return;
 
-    // Seek slightly past start to skip black intro frames
-    video.currentTime = Math.min(seg.start_seconds + 0.5, seg.end_seconds - 0.1);
+    // Seek past start to skip black intro frames
+    video.currentTime = Math.min(seg.start_seconds + 1, seg.end_seconds - 0.1);
 
     if (playingRef.current) {
       video.currentTime = seg.start_seconds;
@@ -624,6 +624,7 @@ export default function ReelBuilderPage() {
                   <div className="relative aspect-[9/16] overflow-hidden rounded-t-lg">
                     <VideoThumbnail
                       src={`${segment.video.url}#t=${segment.start_seconds}`}
+                      thumbnailUrl={segment.video.thumbnail_url}
                       className="w-full h-full"
                       iconSize="sm"
                     />

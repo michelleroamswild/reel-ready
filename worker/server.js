@@ -244,6 +244,55 @@ async function runFFmpeg(args) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  POST /generate-thumbnail                                           */
+/* ------------------------------------------------------------------ */
+
+app.post("/generate-thumbnail", async (req, res) => {
+  if (API_KEY && req.body.apiKey !== API_KEY) {
+    return res.status(401).json({ error: "Invalid API key" });
+  }
+
+  const { videoUrl } = req.body;
+  if (!videoUrl) {
+    return res.status(400).json({ error: "videoUrl is required" });
+  }
+
+  let workDir;
+  try {
+    workDir = await mkdtemp(join(tmpdir(), "thumb-"));
+    const outputPath = join(workDir, "thumb.jpg");
+
+    // Extract a single frame at ~1s directly from URL.
+    // -ss before -i means FFmpeg seeks in the stream efficiently (only reads first seconds).
+    await runFFmpeg([
+      "-y",
+      "-ss", "1",
+      "-i", videoUrl,
+      "-vframes", "1",
+      "-q:v", "5",
+      "-vf", "scale=360:-1",
+      outputPath,
+    ]);
+
+    const thumbBuf = await readFile(outputPath);
+    console.log(`[thumbnail] Generated ${(thumbBuf.length / 1024).toFixed(0)}KB thumbnail`);
+    res.set("Content-Type", "image/jpeg");
+    res.set("Content-Length", String(thumbBuf.length));
+    res.send(thumbBuf);
+  } catch (err) {
+    console.error("[thumbnail] Error:", err);
+    res.status(500).json({ error: err.message || "Thumbnail generation failed" });
+  } finally {
+    if (workDir) {
+      try {
+        const { rm } = await import("node:fs/promises");
+        await rm(workDir, { recursive: true, force: true });
+      } catch {}
+    }
+  }
+});
+
+/* ------------------------------------------------------------------ */
 /*  Health check                                                       */
 /* ------------------------------------------------------------------ */
 
