@@ -110,13 +110,21 @@ export default function ReelBuilderPage() {
 
   useEffect(() => {
     const video = videoRefs.current[currentIndex];
-    if (!video) return;
-    video.currentTime = segments[currentIndex]?.start_seconds ?? 0;
+    const seg = segments[currentIndex];
+    if (!video || !seg) return;
+
+    // Seek past start to skip black intro frames
+    video.currentTime = Math.min(seg.start_seconds + 1, seg.end_seconds - 0.1);
+
     if (playingRef.current) {
+      video.currentTime = seg.start_seconds;
       video.play().catch(() => setIsPlaying(false));
     } else {
       // On mobile, briefly play+pause to force a frame to render
-      video.play().then(() => { video.pause(); }).catch(() => {});
+      const onSeeked = () => {
+        video.play().then(() => { video.pause(); }).catch(() => {});
+      };
+      video.addEventListener("seeked", onSeeked, { once: true });
     }
   }, [currentIndex, segments]);
 
@@ -616,6 +624,7 @@ export default function ReelBuilderPage() {
                   <div className="relative aspect-[9/16] overflow-hidden rounded-t-lg">
                     <VideoThumbnail
                       src={`${segment.video.url}#t=${segment.start_seconds}`}
+                      thumbnailUrl={segment.video.thumbnail_url}
                       className="w-full h-full"
                       iconSize="sm"
                     />

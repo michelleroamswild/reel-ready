@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { uploadToR2 } from "@/lib/storage";
@@ -13,6 +14,19 @@ async function fetchVideos(): Promise<Video[]> {
 
   if (error) throw error;
   return data;
+}
+
+async function generateThumbnail(videoId: string, videoUrl: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.functions.invoke("generate-thumbnail", {
+      body: { videoId, videoUrl },
+    });
+    if (error) throw error;
+    return data?.thumbnailUrl ?? null;
+  } catch (err) {
+    console.error("Thumbnail generation failed:", err);
+    return null;
+  }
 }
 
 async function analyzeVideoWithAi(
@@ -89,7 +103,10 @@ export function useVideos() {
     },
     onSuccess: (video) => {
       queryClient.invalidateQueries({ queryKey: VIDEOS_KEY });
-      // Trigger AI analysis in the background
+      // Trigger thumbnail generation and AI analysis in the background
+      generateThumbnail(video.id, video.url).then(() => {
+        queryClient.invalidateQueries({ queryKey: VIDEOS_KEY });
+      });
       analyzeVideoWithAi(video.id, video.url, video.mime_type).then(() => {
         queryClient.invalidateQueries({ queryKey: VIDEOS_KEY });
       });
@@ -114,6 +131,37 @@ export function useVideos() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: VIDEOS_KEY }),
   });
 
+  // Auto-generate thumbnails for videos that don't have one yet
+  const backfillingRef = useRef(false);
+  const backfilledIds = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (isLoading || backfillingRef.current) return;
+
+    const missing = videos.filter(
+      (v) => !v.thumbnail_url && !backfilledIds.current.has(v.id)
+    );
+    if (missing.length === 0) return;
+
+    backfillingRef.current = true;
+
+    (async () => {
+      for (const v of missing) {
+        backfilledIds.current.add(v.id);
+        await generateThumbnail(v.id, v.url);
+      }
+      backfillingRef.current = false;
+      queryClient.invalidateQueries({ queryKey: VIDEOS_KEY });
+    })();
+  }, [videos, isLoading, queryClient]);
+
+  const thumbnailMutation = useMutation({
+    mutationFn: async (video: Video) => {
+      return generateThumbnail(video.id, video.url);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: VIDEOS_KEY }),
+  });
+
   return {
     videos,
     isLoading,
@@ -122,5 +170,6 @@ export function useVideos() {
     analyzeVideo: (video: Video) => analyzeMutation.mutate(video),
     isAnalyzing: analyzeMutation.isPending,
     deleteVideo: (id: string) => deleteMutation.mutate(id),
+    generateThumbnail: (video: Video) => thumbnailMutation.mutate(video),
   };
 }

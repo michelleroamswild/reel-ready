@@ -25,5 +25,6 @@ export interface Video {
   duration_seconds: number | null;
   mime_type: string;
   analysis: VideoAnalysis | null;
+  thumbnail_url: string | null;
   created_at: string;
 }

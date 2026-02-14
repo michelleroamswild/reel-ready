@@ -199,6 +199,7 @@ export default function VideosPage() {
             >
               <VideoThumbnail
                 src={v.url}
+                thumbnailUrl={v.thumbnail_url}
                 className="w-full aspect-[9/16]"
               />
               {/* Overlay actions */}
