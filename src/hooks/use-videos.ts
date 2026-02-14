@@ -21,11 +21,23 @@ async function analyzeVideoWithAi(
   mimeType?: string
 ): Promise<VideoAnalysis | null> {
   try {
+    console.log("[analyze] Calling analyze-video edge function for", videoId, videoUrl);
     const { data, error } = await supabase.functions.invoke("analyze-video", {
       body: { videoUrl, mimeType: mimeType || "video/mp4" },
     });
 
-    if (error) throw error;
+    if (error) {
+      // Try to extract the actual error message from the response
+      let detail = error.message;
+      try {
+        if (error.context && typeof error.context.json === "function") {
+          const body = await error.context.json();
+          detail = body?.error || JSON.stringify(body);
+        }
+      } catch {}
+      console.error("[analyze] Edge function error detail:", detail);
+      throw new Error(detail);
+    }
 
     const analysis = data.analysis as VideoAnalysis;
 

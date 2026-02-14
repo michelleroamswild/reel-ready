@@ -27,6 +27,11 @@ const App = () => (
                   <VideoDetailPage />
                 </main>
               } />
+              <Route path="/reels/:id" element={
+                <main className="mx-auto max-w-6xl px-4 pt-4 pb-20">
+                  <ReelBuilderPage />
+                </main>
+              } />
               <Route path="*" element={
                 <main className="mx-auto max-w-lg px-4 pt-4 pb-20">
                   <Routes>
@@ -34,7 +39,6 @@ const App = () => (
                     <Route path="/videos" element={<VideosPage />} />
                     <Route path="/matches" element={<MatchesPage />} />
                     <Route path="/reels" element={<ReelsPage />} />
-                    <Route path="/reels/:id" element={<ReelBuilderPage />} />
                     <Route path="*" element={<NotFound />} />
                   </Routes>
                 </main>

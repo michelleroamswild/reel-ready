@@ -1,9 +1,8 @@
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useReel } from "@/hooks/use-reels";
 import { useVideos } from "@/hooks/use-videos";
 import { ArrowsClockwise } from "@phosphor-icons/react";
-import { ReelPreviewDialog } from "@/components/ReelPreviewDialog";
 import { ExportReelDialog } from "@/components/ExportReelDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,22 +15,102 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import { ArrowLeft, Play, Export } from "@phosphor-icons/react";
 import type { ReelSegmentWithVideo } from "@/types/reel";
 import type { Video } from "@/types/video";
+import type { TextPosition, TextSize, TextBorder, TextBorderColor } from "@/lib/ffmpeg";
 
 export default function ReelBuilderPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { reel, isLoading, updateSegment, isUpdating } = useReel(id);
+  const { reel, isLoading, updateSegment, isUpdating, updateTitle } = useReel(id);
   const { videos } = useVideos();
 
   const [swapSegment, setSwapSegment] = useState<ReelSegmentWithVideo | null>(null);
   const [swapVideoId, setSwapVideoId] = useState<string>("");
   const [swapStart, setSwapStart] = useState("0");
   const [swapEnd, setSwapEnd] = useState("5");
-  const [showPreview, setShowPreview] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+
+  // Text overlay settings
+  const [burnText, setBurnText] = useState(true);
+  const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
+  const [textSize, setTextSize] = useState<TextSize>("medium");
+  const [textBorder, setTextBorder] = useState<TextBorder>("outline");
+  const [textBorderColor, setTextBorderColor] = useState<TextBorderColor>("black");
+
+  // Inline preview state
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [finished, setFinished] = useState(false);
+  const [videoKey, setVideoKey] = useState(0);
+
+  const segments = reel?.reel_segments ?? [];
+  const current = segments[currentIndex];
+
+  // Force remount video when segment changes
+  const prevIndex = useRef(0);
+  useEffect(() => {
+    if (prevIndex.current !== currentIndex) {
+      setVideoKey((k) => k + 1);
+    }
+    prevIndex.current = currentIndex;
+  }, [currentIndex]);
+
+  const handlePlay = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || segments.length === 0) return;
+
+    if (finished) {
+      setFinished(false);
+      setIsPlaying(true);
+      setCurrentIndex(0);
+      return;
+    }
+
+    setIsPlaying(true);
+    video.play().catch(() => setIsPlaying(false));
+  }, [finished, segments.length]);
+
+  const handlePause = useCallback(() => {
+    videoRef.current?.pause();
+    setIsPlaying(false);
+  }, []);
+
+  const handleTimeUpdate = useCallback(() => {
+    const video = videoRef.current;
+    const seg = segments[currentIndex];
+    if (!video || !seg) return;
+
+    if (video.currentTime >= seg.end_seconds) {
+      video.pause();
+      if (currentIndex < segments.length - 1) {
+        setIsPlaying(true);
+        setCurrentIndex((i) => i + 1);
+      } else {
+        setIsPlaying(false);
+        setFinished(true);
+      }
+    }
+  }, [currentIndex, segments]);
+
+  const handleLoadedData = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (isPlaying) {
+      video.play().catch(() => setIsPlaying(false));
+    }
+  }, [isPlaying]);
+
+  const jumpToSegment = useCallback((index: number) => {
+    setCurrentIndex(index);
+    setIsPlaying(false);
+    setFinished(false);
+  }, []);
 
   if (isLoading) {
     return (
@@ -99,7 +178,7 @@ export default function ReelBuilderPage() {
           </Button>
           <Button
             size="sm"
-            onClick={() => setShowPreview(true)}
+            onClick={handlePlay}
             disabled={reel.reel_segments.length === 0}
           >
             <Play className="h-4 w-4 mr-1" /> Preview
@@ -107,144 +186,395 @@ export default function ReelBuilderPage() {
         </div>
       </div>
 
-      {/* Reel info */}
-      <div>
-        <h1 className="text-lg font-semibold">{reel.title}</h1>
-        <div className="flex gap-2 mt-1">
-          <Badge variant="secondary" className="text-xs">
-            {reel.reel_segments.length} segments
-          </Badge>
-          <Badge variant="outline" className="text-xs">
-            {Math.round(totalDuration)}s / {reel.target_duration_seconds}s target
-          </Badge>
+      {/* Top row: Preview + details side by side */}
+      <div className="flex flex-col md:flex-row gap-6">
+        {/* Preview player */}
+        <div className="shrink-0 md:w-64 lg:w-72">
+          <div className="relative rounded-lg border bg-black aspect-[9/16] overflow-hidden">
+            {current ? (
+              <video
+                key={videoKey}
+                ref={videoRef}
+                src={`${current.video.url}#t=${current.start_seconds}`}
+                className="w-full h-full object-contain"
+                playsInline
+                preload="auto"
+                onLoadedData={handleLoadedData}
+                onTimeUpdate={handleTimeUpdate}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <p className="text-sm text-white/50">No segments</p>
+              </div>
+            )}
+
+            {/* Play overlay */}
+            {current && !isPlaying && (
+              <div
+                className="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer"
+                onClick={handlePlay}
+              >
+                <div className="h-14 w-14 rounded-full bg-white/90 flex items-center justify-center">
+                  <Play className="h-7 w-7 text-black ml-0.5" weight="fill" />
+                </div>
+              </div>
+            )}
+
+            {/* Tap to pause */}
+            {isPlaying && (
+              <div
+                className="absolute inset-0 cursor-pointer"
+                onClick={handlePause}
+              />
+            )}
+
+            {/* Section text overlay */}
+            {current && burnText && current.section_text && (
+              <div
+                className={`absolute left-0 right-0 px-3 ${
+                  textPosition === "top"
+                    ? "top-[15%]"
+                    : textPosition === "center"
+                    ? "top-1/2 -translate-y-1/2"
+                    : "bottom-[15%]"
+                }`}
+              >
+                <p
+                  className="text-white font-semibold text-center whitespace-pre-line"
+                  style={{
+                    fontSize:
+                      textSize === "small" ? 14 : textSize === "large" ? 24 : 18,
+                    ...(textBorder === "outline"
+                      ? {
+                          WebkitTextStroke: `0.8px ${textBorderColor}`,
+                          textShadow: `0 0 2px ${textBorderColor}`,
+                        }
+                      : textBorder === "shadow"
+                      ? {
+                          textShadow: "1px 1px 3px rgba(0,0,0,0.5)",
+                        }
+                      : {
+                          background: `${textBorderColor === "black" ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.35)"}`,
+                          padding: "4px 10px",
+                          borderRadius: 6,
+                          display: "inline",
+                          boxDecorationBreak: "clone" as const,
+                        }),
+                  }}
+                >
+                  {current.section_text}
+                </p>
+              </div>
+            )}
+
+            {/* Progress dots */}
+            {segments.length > 0 && (
+              <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-1.5">
+                {segments.map((_, i) => (
+                  <div
+                    key={i}
+                    className={`h-1.5 w-1.5 rounded-full transition-colors cursor-pointer ${
+                      i === currentIndex
+                        ? "bg-white"
+                        : i < currentIndex
+                        ? "bg-white/60"
+                        : "bg-white/30"
+                    }`}
+                    onClick={() => jumpToSegment(i)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right: Details + text controls */}
+        <div className="flex-1 min-w-0 space-y-4">
+          {/* Title + badges */}
+          <div className="space-y-1">
+            {editingTitle ? (
+              <input
+                autoFocus
+                className="text-lg font-semibold bg-transparent border-b border-primary outline-none w-full"
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onBlur={() => {
+                  const trimmed = titleDraft.trim();
+                  if (trimmed && trimmed !== reel.title) updateTitle(trimmed);
+                  setEditingTitle(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                  if (e.key === "Escape") { setEditingTitle(false); }
+                }}
+              />
+            ) : (
+              <h1
+                className="text-lg font-semibold truncate cursor-pointer hover:text-primary/80 transition-colors"
+                onClick={() => { setTitleDraft(reel.title); setEditingTitle(true); }}
+                title="Click to edit"
+              >
+                {reel.title}
+              </h1>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="secondary" className="text-xs">
+                {reel.reel_segments.length} segments
+              </Badge>
+              <Badge variant="outline" className="text-xs">
+                {Math.round(totalDuration)}s / {reel.target_duration_seconds}s target
+              </Badge>
+            </div>
+          </div>
+
+          {/* Phrase card */}
+          {reel.phrase && (
+            <div className="rounded-lg border bg-muted/50 p-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                Phrase
+              </p>
+              <p className="text-sm whitespace-pre-line">{reel.phrase.text}</p>
+            </div>
+          )}
+
+          {/* Cloned template card */}
+          {reel.source_template && (
+            <div className="rounded-lg border bg-muted/50 p-3 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                Cloned Template
+              </p>
+              <div className="flex gap-2 flex-wrap">
+                <Badge variant="secondary" className="text-xs">
+                  {reel.source_template.segmentCount} template segments
+                </Badge>
+                <Badge variant="outline" className="text-xs capitalize">
+                  {reel.source_template.overallPacing}
+                </Badge>
+                <Badge variant="outline" className="text-xs capitalize">
+                  {reel.source_template.overallMood}
+                </Badge>
+              </div>
+              {reel.source_template.visualStyleNotes && (
+                <p className="text-xs text-muted-foreground">
+                  {reel.source_template.visualStyleNotes}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Text overlay controls */}
+          <div className="space-y-3 rounded-lg border p-3">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="burn-text-preview" className="text-sm font-medium">
+                Text overlay
+              </Label>
+              <Switch
+                id="burn-text-preview"
+                checked={burnText}
+                onCheckedChange={setBurnText}
+              />
+            </div>
+
+            {burnText && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Position</Label>
+                  <div className="flex gap-1">
+                    {([
+                      { value: "top", label: "Top" },
+                      { value: "center", label: "Mid" },
+                      { value: "bottom", label: "Bot" },
+                    ] as const).map((opt) => (
+                      <Button
+                        key={opt.value}
+                        variant={textPosition === opt.value ? "default" : "outline"}
+                        size="sm"
+                        className="flex-1 h-7 text-xs px-1"
+                        onClick={() => setTextPosition(opt.value)}
+                      >
+                        {opt.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Font size</Label>
+                  <div className="flex gap-1">
+                    {([
+                      { value: "small", label: "S" },
+                      { value: "medium", label: "M" },
+                      { value: "large", label: "L" },
+                    ] as const).map((opt) => (
+                      <Button
+                        key={opt.value}
+                        variant={textSize === opt.value ? "default" : "outline"}
+                        size="sm"
+                        className="flex-1 h-7 text-xs px-1"
+                        onClick={() => setTextSize(opt.value)}
+                      >
+                        {opt.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Border style</Label>
+                  <div className="flex gap-1">
+                    {([
+                      { value: "outline", label: "Outline" },
+                      { value: "shadow", label: "Shadow" },
+                      { value: "box", label: "Box" },
+                    ] as const).map((opt) => (
+                      <Button
+                        key={opt.value}
+                        variant={textBorder === opt.value ? "default" : "outline"}
+                        size="sm"
+                        className="flex-1 h-7 text-xs px-1"
+                        onClick={() => setTextBorder(opt.value)}
+                      >
+                        {opt.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                {textBorder !== "shadow" && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Border color</Label>
+                    <div className="flex gap-1">
+                      {([
+                        { value: "black", label: "Black" },
+                        { value: "white", label: "White" },
+                      ] as const).map((opt) => (
+                        <Button
+                          key={opt.value}
+                          variant={textBorderColor === opt.value ? "default" : "outline"}
+                          size="sm"
+                          className="flex-1 h-7 text-xs px-1"
+                          onClick={() => setTextBorderColor(opt.value)}
+                        >
+                          {opt.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Phrase card */}
-      {reel.phrase && (
-        <div className="rounded-lg border bg-muted/50 p-3">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
-            Phrase
-          </p>
-          <p className="text-sm whitespace-pre-line">{reel.phrase.text}</p>
-        </div>
-      )}
-
-      {/* Cloned template card */}
-      {reel.source_template && (
-        <div className="rounded-lg border bg-muted/50 p-3 space-y-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
-            Cloned Template
-          </p>
-          <div className="flex gap-2 flex-wrap">
-            <Badge variant="secondary" className="text-xs">
-              {reel.source_template.segmentCount} template segments
-            </Badge>
-            <Badge variant="outline" className="text-xs capitalize">
-              {reel.source_template.overallPacing}
-            </Badge>
-            <Badge variant="outline" className="text-xs capitalize">
-              {reel.source_template.overallMood}
-            </Badge>
-          </div>
-          {reel.source_template.visualStyleNotes && (
-            <p className="text-xs text-muted-foreground">
-              {reel.source_template.visualStyleNotes}
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Segment list */}
+      {/* Segment strip — horizontal scroll */}
       {reel.reel_segments.length === 0 ? (
-        <div className="text-center py-8 space-y-2">
+        <div className="text-center py-8">
           <p className="text-sm text-muted-foreground">
             No segments yet. Delete this reel and create a new one.
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {reel.reel_segments.map((segment) => {
-            const dur = segment.end_seconds - segment.start_seconds;
-            const maxDur = segment.video.duration_seconds
-              ? Math.round((segment.video.duration_seconds - segment.start_seconds) * 10) / 10
-              : dur;
-            // Build duration options: 1s increments from 1s (or 2s) up to maxDur
-            const durOptions: number[] = [];
-            for (let d = 1; d <= Math.floor(maxDur); d++) {
-              durOptions.push(d);
-            }
-            // Include the current duration if it's fractional and not already in the list
-            const roundedDur = Math.round(dur * 10) / 10;
-            if (!durOptions.includes(roundedDur) && roundedDur > 0) {
-              durOptions.push(roundedDur);
-              durOptions.sort((a, b) => a - b);
-            }
+        <div>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+            Segments
+          </p>
+          <div className="flex gap-3 overflow-x-auto pb-3 -mx-4 px-4 snap-x">
+            {reel.reel_segments.map((segment, idx) => {
+              const dur = segment.end_seconds - segment.start_seconds;
+              const maxDur = segment.video.duration_seconds
+                ? Math.round((segment.video.duration_seconds - segment.start_seconds) * 10) / 10
+                : dur;
+              const durOptions: number[] = [];
+              for (let d = 1; d <= Math.floor(maxDur); d++) {
+                durOptions.push(d);
+              }
+              const roundedDur = Math.round(dur * 10) / 10;
+              if (!durOptions.includes(roundedDur) && roundedDur > 0) {
+                durOptions.push(roundedDur);
+                durOptions.sort((a, b) => a - b);
+              }
 
-            return (
-              <div key={segment.id} className="rounded-lg border bg-card overflow-hidden">
-                {/* Video thumbnail */}
-                <div className="relative aspect-video bg-muted">
-                  <video
-                    src={`${segment.video.url}#t=${segment.start_seconds}`}
-                    preload="metadata"
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute top-2 left-2">
-                    <Badge variant="secondary" className="bg-black/60 text-white text-xs border-0">
-                      #{segment.section_index + 1}
-                    </Badge>
-                  </div>
-                  <div className="absolute top-2 right-2">
-                    <Badge variant="secondary" className="bg-black/60 text-white text-xs border-0">
-                      {segment.start_seconds.toFixed(1)}s – {segment.end_seconds.toFixed(1)}s
-                    </Badge>
-                  </div>
-                  {segment.score != null && (
-                    <div className="absolute bottom-2 left-2">
-                      <Badge variant="secondary" className="bg-black/60 text-white text-xs border-0">
-                        Score: {segment.score}
+              const isActive = idx === currentIndex;
+
+              return (
+                <div
+                  key={segment.id}
+                  className={`shrink-0 w-44 rounded-lg border bg-card overflow-hidden cursor-pointer transition-colors snap-start ${
+                    isActive ? "ring-2 ring-primary" : "hover:border-primary/50"
+                  }`}
+                  onClick={() => jumpToSegment(idx)}
+                >
+                  {/* Thumbnail */}
+                  <div className="relative aspect-[9/16] bg-muted">
+                    <video
+                      src={`${segment.video.url}#t=${segment.start_seconds}`}
+                      preload="metadata"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute top-1.5 left-1.5">
+                      <Badge variant="secondary" className="bg-black/60 text-white text-[10px] border-0 px-1.5 py-0">
+                        #{segment.section_index + 1}
                       </Badge>
                     </div>
-                  )}
-                  <div className="absolute bottom-2 right-2">
-                    <select
-                      className="bg-black/60 text-white text-xs border-0 rounded-full px-2 py-0.5 cursor-pointer outline-none appearance-none text-center"
-                      value={roundedDur}
-                      onChange={(e) => {
-                        const newDur = parseFloat(e.target.value);
-                        updateSegment({
-                          segmentId: segment.id,
-                          videoId: segment.video_id,
-                          startSeconds: segment.start_seconds,
-                          endSeconds: segment.start_seconds + newDur,
-                        });
-                      }}
-                    >
-                      {durOptions.map((d) => (
-                        <option key={d} value={d}>
-                          {d}s
-                        </option>
-                      ))}
-                    </select>
+                    <div className="absolute top-1.5 right-1.5">
+                      <Badge variant="secondary" className="bg-black/60 text-white text-[10px] border-0 px-1.5 py-0">
+                        {roundedDur}s
+                      </Badge>
+                    </div>
+                    {segment.score != null && (
+                      <div className="absolute bottom-1.5 left-1.5">
+                        <Badge variant="secondary" className="bg-black/60 text-white text-[10px] border-0 px-1.5 py-0">
+                          {segment.score}
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Content */}
+                  <div className="p-2 space-y-1.5">
+                    <p className="text-xs font-medium leading-snug line-clamp-2">{segment.section_text}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{segment.video.filename}</p>
+                    <div className="flex gap-1.5">
+                      <div className="flex-1" onClick={(e) => e.stopPropagation()}>
+                        <select
+                          className="w-full bg-muted text-[10px] border rounded px-1 py-0.5 cursor-pointer outline-none"
+                          value={roundedDur}
+                          onChange={(e) => {
+                            const newDur = parseFloat(e.target.value);
+                            updateSegment({
+                              segmentId: segment.id,
+                              videoId: segment.video_id,
+                              startSeconds: segment.start_seconds,
+                              endSeconds: segment.start_seconds + newDur,
+                            });
+                          }}
+                        >
+                          {durOptions.map((d) => (
+                            <option key={d} value={d}>
+                              {d}s
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-5 text-[10px] px-1.5"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenSwap(segment);
+                        }}
+                      >
+                        <ArrowsClockwise className="h-3 w-3 mr-0.5" />
+                        Swap
+                      </Button>
+                    </div>
                   </div>
                 </div>
-
-                {/* Content */}
-                <div className="p-3 space-y-2">
-                  <p className="text-sm font-medium">{segment.section_text}</p>
-                  <p className="text-xs text-muted-foreground">{segment.video.filename}</p>
-                  {segment.reasoning && (
-                    <p className="text-xs text-muted-foreground italic">{segment.reasoning}</p>
-                  )}
-                  <Button variant="outline" size="sm" className="w-full" onClick={() => handleOpenSwap(segment)}>
-                    <ArrowsClockwise className="h-4 w-4 mr-1" />
-                    Swap Clip
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -350,19 +680,18 @@ export default function ReelBuilderPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Preview dialog */}
-      <ReelPreviewDialog
-        open={showPreview}
-        onOpenChange={setShowPreview}
-        segments={reel.reel_segments}
-      />
-
       {/* Export dialog */}
       <ExportReelDialog
         open={showExport}
         onOpenChange={setShowExport}
         segments={reel.reel_segments}
         reelTitle={reel.title}
+        burnText={burnText}
+        onBurnTextChange={setBurnText}
+        textPosition={textPosition}
+        textSize={textSize}
+        textBorder={textBorder}
+        textBorderColor={textBorderColor}
       />
     </div>
   );

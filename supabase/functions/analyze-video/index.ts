@@ -10,6 +10,11 @@ const corsHeaders = {
 
 const ANALYSIS_PROMPT = `Analyze this video clip for use in short-form social media content (TikTok/Reels/Shorts).
 
+IMPORTANT: This may be a screen recording of a TikTok, Reel, or Short. You MUST completely ignore ALL platform UI:
+- EXCLUDE: "TikTok", "@username", any @mentions, hashtags (#), like/comment/share/bookmark buttons, follower counts, profile pictures, platform logos, "Original Sound" labels, caption text pinned to the bottom of the screen, and any other platform chrome.
+- NONE of these should appear anywhere in your response — not in summary, textOverlays, segments, or any other field.
+- ONLY include text that the creator intentionally placed as part of their video content (styled text overlays, titles, storytelling captions that are part of the creative edit — NOT the platform caption).
+
 Respond in this exact JSON format:
 {
   "mood": "<the overall mood/tone, e.g. calm, energetic, dramatic, playful, melancholic>",
@@ -17,6 +22,7 @@ Respond in this exact JSON format:
   "visuals": "<describe the key visual elements, colors, composition, camera work>",
   "sceneTags": ["<tag1>", "<tag2>", ...],
   "summary": "<1-2 sentence description of what the video shows and its overall vibe>",
+  "textOverlays": ["<text1>", "<text2>", ...],
   "moodScore": <number from -5 (dark/somber) to +5 (bright/uplifting)>,
   "energyScore": <number from 1 (very calm/still) to 10 (extremely high energy)>,
   "pacing": "<one of: slow, medium, fast, variable>",
@@ -24,11 +30,20 @@ Respond in this exact JSON format:
   "shotTypes": ["<type1>", "<type2>", ...],
   "dominantMotion": "<e.g. static, slow pan, fast action, handheld shake, smooth tracking>",
   "structure": "<e.g. steady, builds intensity, peaks then calms, dramatic shift>",
-  "audioNotes": "<e.g. no audio, ambient sounds, music, speech, sound effects>"
+  "audioNotes": "<e.g. no audio, ambient sounds, music, speech, sound effects>",
+  "segments": [
+    {
+      "startSeconds": <number>,
+      "endSeconds": <number>,
+      "description": "<what happens in this segment>",
+      "textOnScreen": "<creator text visible during this segment, or empty string>"
+    }
+  ]
 }
 
 Field guidelines:
 - sceneTags: 3-8 short descriptive tags (nature, urban, close-up, aerial, golden-hour, etc.)
+- textOverlays: list of all distinct creator text overlays seen in the video, in order of appearance. Empty array if none.
 - moodScore: -5 = very dark/somber/tense, 0 = neutral, +5 = very bright/uplifting/joyful
 - energyScore: 1 = very still/calm, 5 = moderate, 10 = extremely fast/intense
 - pacing: how quickly scenes/shots change — slow, medium, fast, or variable if it shifts
@@ -37,6 +52,7 @@ Field guidelines:
 - dominantMotion: the primary motion characteristic of the video
 - structure: how the energy/mood evolves over the duration of the clip
 - audioNotes: describe any audio present — if no audio track, say "no audio"
+- segments: break the video into its natural segments/scenes (by cuts, text changes, or mood shifts). Include timestamps and any creator text visible during each segment.
 
 Only return the JSON, nothing else.`;
 
@@ -113,6 +129,39 @@ async function uploadToGeminiFileApi(
   return fileUri;
 }
 
+/** Remove platform watermark / UI text from analysis results. */
+function stripPlatformText(analysis: Record<string, unknown>) {
+  function clean(str: string): string {
+    let out = str;
+    out = out.replace(/@[\w.]+/g, "");
+    out = out.replace(/#[\w]+/g, "");
+    out = out.replace(/\bTikTok\b/gi, "");
+    out = out.replace(/\bInstagram\b/gi, "");
+    out = out.replace(/\bYouTube\s*Shorts?\b/gi, "");
+    out = out.replace(/\bOriginal\s*Sound\b/gi, "");
+    out = out.replace(/\bFYP\b/gi, "");
+    out = out.replace(/\bFor\s*You\b/gi, "");
+    out = out.replace(/\s{2,}/g, " ").trim();
+    return out;
+  }
+
+  function walk(val: unknown): unknown {
+    if (typeof val === "string") return clean(val);
+    if (Array.isArray(val)) {
+      return val.map(walk).filter((v) => !(typeof v === "string" && v.length === 0));
+    }
+    if (val !== null && typeof val === "object") {
+      const obj = val as Record<string, unknown>;
+      for (const k of Object.keys(obj)) {
+        obj[k] = walk(obj[k]);
+      }
+    }
+    return val;
+  }
+
+  walk(analysis);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -152,28 +201,18 @@ Deno.serve(async (req) => {
       videoPart = { fileData: { mimeType: mime, fileUri } };
     }
 
-    // Cap analysis at first 30 seconds to reduce token usage
-    // (~258 tokens/frame at 1fps, so 30s ≈ 7,740 tokens vs uncapped)
-    const MAX_ANALYZE_SECONDS = 30;
-    const videoMetadataPart = {
-      videoMetadata: {
-        startOffset: { seconds: 0 },
-        endOffset: { seconds: MAX_ANALYZE_SECONDS },
-      },
-    };
-
     const geminiRes = await fetch(GEMINI_GENERATE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [
           {
-            parts: [videoPart, videoMetadataPart, { text: ANALYSIS_PROMPT }],
+            parts: [videoPart, { text: ANALYSIS_PROMPT }],
           },
         ],
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 800,
+          maxOutputTokens: 2000,
           responseMimeType: "application/json",
         },
       }),
@@ -192,6 +231,13 @@ Deno.serve(async (req) => {
     }
 
     const analysis = JSON.parse(text);
+
+    // Strip platform watermark/UI text from results
+    try {
+      stripPlatformText(analysis);
+    } catch (e) {
+      console.error("[analyze-video] stripPlatformText error (non-fatal):", e);
+    }
 
     return new Response(JSON.stringify({ analysis }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

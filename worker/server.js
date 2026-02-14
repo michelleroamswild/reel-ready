@@ -42,7 +42,7 @@ app.post("/export-reel", async (req, res) => {
     return res.status(401).json({ error: "Invalid API key" });
   }
 
-  const { segments, burnText, textPosition } = req.body;
+  const { segments, burnText, textPosition, textSize, textBorder, textBorderColor } = req.body;
 
   if (!segments?.length) {
     return res.status(400).json({ error: "No segments provided" });
@@ -69,7 +69,7 @@ app.post("/export-reel", async (req, res) => {
 
     // 2. Run FFmpeg
     if (burnText) {
-      await exportWithText(segments, inputPaths, outputPath, textPosition);
+      await exportWithText(segments, inputPaths, outputPath, textPosition, textSize, textBorder, textBorderColor);
     } else {
       await exportCopyMode(segments, inputPaths, outputPath, workDir);
     }
@@ -138,15 +138,34 @@ async function exportCopyMode(segments, inputPaths, outputPath, workDir) {
 /*  FFmpeg: re-encode with text overlay                                */
 /* ------------------------------------------------------------------ */
 
-async function exportWithText(segments, inputPaths, outputPath, textPosition) {
+async function exportWithText(segments, inputPaths, outputPath, textPosition, textSize, textBorder, textBorderColor) {
   const WIDTH = 1080;
   const HEIGHT = 1920;
 
   // Y coordinate for text position
   let textY;
-  if (textPosition === "top") textY = "120";
+  if (textPosition === "top") textY = "(h*0.15)";
   else if (textPosition === "center") textY = "(h/2)";
-  else textY = "(h-h/6)"; // bottom (default)
+  else textY = "(h*0.85)"; // bottom (default)
+
+  // Font — Liberation Sans Bold is a clean sans-serif (like Arial/Helvetica)
+  const fontFile = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf";
+
+  // Font size — scaled to match preview CSS at ~4x (preview: 14/18/24px on ~270px wide → 1080px)
+  const fontSizeMap = { small: 56, medium: 72, large: 96 };
+  const fontSize = fontSizeMap[textSize] || 72;
+
+  // Border style params for drawtext — scaled to match preview at ~4x
+  const borderColor = textBorderColor || "black";
+  let borderParams;
+  if (textBorder === "shadow") {
+    borderParams = "shadowx=4:shadowy=4:shadowcolor=black@0.5";
+  } else if (textBorder === "box") {
+    borderParams = `box=1:boxborderw=16:boxcolor=${borderColor}@0.35`;
+  } else {
+    // outline (default)
+    borderParams = `borderw=3:bordercolor=${borderColor}`;
+  }
 
   // Process each segment ONE AT A TIME to avoid OOM from loading all inputs
   const workDir = join(outputPath, "..");
@@ -167,7 +186,7 @@ async function exportWithText(segments, inputPaths, outputPath, textPosition) {
         .replace(/'/g, "'\\\\\\''")
         .replace(/:/g, "\\:")
         .replace(/%/g, "%%");
-      vf += `,drawtext=text='${escapedText}':fontsize=44:fontcolor=white:x=(w-text_w)/2:y=${textY}:borderw=3:bordercolor=black`;
+      vf += `,drawtext=text='${escapedText}':fontfile=${fontFile}:fontsize=${fontSize}:fontcolor=white:x=(w-text_w)/2:y=${textY}:${borderParams}`;
     }
 
     await runFFmpeg([

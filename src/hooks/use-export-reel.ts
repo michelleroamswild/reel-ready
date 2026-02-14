@@ -5,6 +5,9 @@ import {
   triggerDownload,
   type ExportProgress,
   type TextPosition,
+  type TextSize,
+  type TextBorder,
+  type TextBorderColor,
 } from "@/lib/ffmpeg";
 import type { ReelSegmentWithVideo } from "@/types/reel";
 
@@ -23,7 +26,14 @@ export function useExportReel() {
   const startExport = useCallback(
     async (
       segments: ReelSegmentWithVideo[],
-      options: { burnText: boolean; textPosition?: TextPosition; filename: string }
+      options: {
+        burnText: boolean;
+        textPosition?: TextPosition;
+        textSize?: TextSize;
+        textBorder?: TextBorder;
+        textBorderColor?: TextBorderColor;
+        filename: string;
+      }
     ) => {
       setIsExporting(true);
       setProgress(INITIAL_PROGRESS);
@@ -33,7 +43,13 @@ export function useExportReel() {
       try {
         const blob = await exportReel(
           segments,
-          { burnText: options.burnText, textPosition: options.textPosition },
+          {
+            burnText: options.burnText,
+            textPosition: options.textPosition,
+            textSize: options.textSize,
+            textBorder: options.textBorder,
+            textBorderColor: options.textBorderColor,
+          },
           (p) => {
             if (!cancelledRef.current) {
               setProgress(p);

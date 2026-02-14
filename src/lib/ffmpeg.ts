@@ -19,6 +19,9 @@ export interface ExportProgress {
 type ProgressCallback = (progress: ExportProgress) => void;
 
 export type TextPosition = "top" | "center" | "bottom";
+export type TextSize = "small" | "medium" | "large";
+export type TextBorder = "outline" | "shadow" | "box";
+export type TextBorderColor = "black" | "white";
 
 const WORKER_URL = import.meta.env.VITE_EXPORT_WORKER_URL as string;
 
@@ -29,7 +32,13 @@ const WORKER_URL = import.meta.env.VITE_EXPORT_WORKER_URL as string;
  */
 export async function exportReel(
   segments: ReelSegmentWithVideo[],
-  options: { burnText: boolean; textPosition?: TextPosition },
+  options: {
+    burnText: boolean;
+    textPosition?: TextPosition;
+    textSize?: TextSize;
+    textBorder?: TextBorder;
+    textBorderColor?: TextBorderColor;
+  },
   onProgress: ProgressCallback
 ): Promise<Blob> {
   if (!WORKER_URL) {
@@ -47,36 +56,66 @@ export async function exportReel(
     })),
     burnText: options.burnText,
     textPosition: options.textPosition ?? "bottom",
+    textSize: options.textSize ?? "medium",
+    textBorder: options.textBorder ?? "outline",
+    textBorderColor: options.textBorderColor ?? "black",
   };
 
-  onProgress({
-    stage: "processing",
-    stageProgress: 0.2,
-    overallProgress: 0.1,
-    totalSegments: segments.length,
-  });
+  // Estimate total processing time: ~8s per segment for download + encode
+  const estimatedMs = segments.length * 8000 + 3000;
 
-  const resp = await fetch(`${WORKER_URL}/export-reel`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  // Simulate smooth progress while waiting for the server
+  let currentProgress = 0.05;
+  const startTime = Date.now();
+  const ticker = setInterval(() => {
+    const elapsed = Date.now() - startTime;
+    // Ease toward 85% over the estimated time, slowing down as it approaches
+    const target = Math.min(0.85, (elapsed / estimatedMs) * 0.85);
+    currentProgress += (target - currentProgress) * 0.15;
 
-  if (!resp.ok) {
-    const errBody = await resp.json().catch(() => null);
-    throw new Error(errBody?.error || `Export failed (${resp.status})`);
+    // Figure out which segment we're probably on
+    const segEstimate = Math.min(
+      segments.length,
+      Math.floor((elapsed / estimatedMs) * segments.length) + 1
+    );
+
+    onProgress({
+      stage: "processing",
+      stageProgress: currentProgress,
+      overallProgress: currentProgress,
+      currentSegment: segEstimate,
+      totalSegments: segments.length,
+    });
+  }, 400);
+
+  try {
+    const resp = await fetch(`${WORKER_URL}/export-reel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    clearInterval(ticker);
+
+    if (!resp.ok) {
+      const errBody = await resp.json().catch(() => null);
+      throw new Error(errBody?.error || `Export failed (${resp.status})`);
+    }
+
+    onProgress({
+      stage: "downloading",
+      stageProgress: 0.9,
+      overallProgress: 0.9,
+    });
+
+    const blob = await resp.blob();
+
+    onProgress({ stage: "done", stageProgress: 1, overallProgress: 1 });
+    return blob;
+  } catch (err) {
+    clearInterval(ticker);
+    throw err;
   }
-
-  onProgress({
-    stage: "downloading",
-    stageProgress: 0.5,
-    overallProgress: 0.85,
-  });
-
-  const blob = await resp.blob();
-
-  onProgress({ stage: "done", stageProgress: 1, overallProgress: 1 });
-  return blob;
 }
 
 export function triggerDownload(blob: Blob, filename: string): void {

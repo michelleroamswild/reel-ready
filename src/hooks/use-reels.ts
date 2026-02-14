@@ -244,10 +244,25 @@ export function useReel(id: string | undefined) {
     },
   });
 
+  const updateTitleMutation = useMutation({
+    mutationFn: async (title: string) => {
+      const { error } = await supabase
+        .from("reels")
+        .update({ title })
+        .eq("id", id!);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      if (id) queryClient.invalidateQueries({ queryKey: reelKey(id) });
+      queryClient.invalidateQueries({ queryKey: REELS_KEY });
+    },
+  });
+
   return {
     reel,
     isLoading,
     updateSegment: updateSegmentMutation.mutateAsync,
     isUpdating: updateSegmentMutation.isPending,
+    updateTitle: updateTitleMutation.mutateAsync,
   };
 }

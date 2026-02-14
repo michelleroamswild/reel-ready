@@ -20,13 +20,25 @@ import {
 } from "@phosphor-icons/react";
 import { useExportReel } from "@/hooks/use-export-reel";
 import type { ReelSegmentWithVideo } from "@/types/reel";
-import type { ExportStage, TextPosition } from "@/lib/ffmpeg";
+import type {
+  ExportStage,
+  TextPosition,
+  TextSize,
+  TextBorder,
+  TextBorderColor,
+} from "@/lib/ffmpeg";
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   segments: ReelSegmentWithVideo[];
   reelTitle: string;
+  burnText: boolean;
+  onBurnTextChange: (v: boolean) => void;
+  textPosition: TextPosition;
+  textSize: TextSize;
+  textBorder: TextBorder;
+  textBorderColor: TextBorderColor;
 }
 
 const STAGE_LABELS: Record<ExportStage, string> = {
@@ -42,9 +54,13 @@ export function ExportReelDialog({
   onOpenChange,
   segments,
   reelTitle,
+  burnText,
+  onBurnTextChange,
+  textPosition,
+  textSize,
+  textBorder,
+  textBorderColor,
 }: Props) {
-  const [burnText, setBurnText] = useState(false);
-  const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
   const { isExporting, progress, error, startExport, cancelExport, reset } =
     useExportReel();
 
@@ -60,6 +76,9 @@ export function ExportReelDialog({
     startExport(segments, {
       burnText,
       textPosition,
+      textSize,
+      textBorder,
+      textBorderColor,
       filename: `${safeName}_reel.mp4`,
     });
   };
@@ -111,6 +130,10 @@ export function ExportReelDialog({
                 <span className="text-muted-foreground">Resolution</span>
                 <span className="font-medium">1080 x 1920</span>
               </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Text overlay</span>
+                <span className="font-medium">{burnText ? "On" : "Off"}</span>
+              </div>
             </div>
 
             <div className="flex items-center justify-between">
@@ -125,32 +148,9 @@ export function ExportReelDialog({
               <Switch
                 id="burn-text"
                 checked={burnText}
-                onCheckedChange={setBurnText}
+                onCheckedChange={onBurnTextChange}
               />
             </div>
-
-            {burnText && (
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Text position</Label>
-                <div className="flex gap-2">
-                  {([
-                    { value: "top", label: "Top" },
-                    { value: "center", label: "Center" },
-                    { value: "bottom", label: "Bottom" },
-                  ] as const).map((opt) => (
-                    <Button
-                      key={opt.value}
-                      variant={textPosition === opt.value ? "default" : "outline"}
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => setTextPosition(opt.value)}
-                    >
-                      {opt.label}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         )}
 

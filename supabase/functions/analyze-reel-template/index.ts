@@ -10,9 +10,15 @@ const corsHeaders = {
 
 const TEMPLATE_PROMPT = `You are analyzing a short-form social media video (TikTok/Instagram Reel) to extract its structure as a reusable template.
 
+IMPORTANT — IGNORE ALL PLATFORM UI:
+This is likely a screen recording or download from TikTok/Instagram/YouTube. You MUST completely ignore all platform elements:
+- EXCLUDE: "TikTok", "@username", any @mentions, hashtags (#), like/comment/share/bookmark buttons, follower counts, profile pictures, platform logos, "Original Sound" labels, caption text pinned to the bottom of the screen, and any other platform chrome.
+- For textOverlay fields, ONLY include text that the creator intentionally placed as part of their video content (styled text overlays, titles, storytelling captions that are part of the creative edit).
+- Platform captions, watermarks, and usernames are NOT text overlays — do not include them.
+
 Analyze the video carefully and identify:
 1. Every distinct visual segment/cut (when the background scene or clip changes)
-2. Any text overlays and when they appear
+2. Any CREATOR text overlays and when they appear (NOT platform UI)
 3. The mood, energy, and visual style of each segment
 4. The overall pacing and structure
 
@@ -26,7 +32,7 @@ Respond in this exact JSON format:
       "startSeconds": <number>,
       "endSeconds": <number>,
       "durationSeconds": <number>,
-      "textOverlay": "<text visible in this segment, or null if none>",
+      "textOverlay": "<creator text visible in this segment, or null if none>",
       "mood": "<mood of this specific segment>",
       "energy": "<low|medium|high>",
       "visualDescription": "<what is shown: camera angle, subject, movement>"
@@ -44,7 +50,7 @@ Guidelines:
 - Every frame of the video should belong to exactly one segment
 - A "cut" is when the visual content/clip changes (not just text changing)
 - If text appears or changes within the same visual scene, note the text but keep it as one segment
-- Capture ALL text overlays exactly as they appear on screen
+- ONLY include creator text overlays — NEVER include TikTok watermarks, @usernames, hashtags, or platform captions
 - For energy: "low" = calm/slow, "medium" = moderate pace, "high" = fast/intense
 
 Only return the JSON, nothing else.`;
@@ -118,6 +124,44 @@ async function uploadToGeminiFileApi(
   return fileUri;
 }
 
+/** Remove platform watermark / UI text from template results. */
+function stripPlatformText(obj: Record<string, unknown>) {
+  const STRIP_PATTERNS = [
+    /@[\w.]+/g,                      // @username
+    /#[\w]+/g,                       // #hashtag
+    /\bTikTok\b/gi,
+    /\bInstagram\b/gi,
+    /\bYouTube\s*Shorts?\b/gi,
+    /\bOriginal\s*Sound\b/gi,
+    /\bFYP\b/gi,
+    /\bFor\s*You\b/gi,
+  ];
+
+  function clean(str: string): string {
+    let out = str;
+    for (const p of STRIP_PATTERNS) {
+      out = out.replace(p, "");
+    }
+    return out.replace(/\s{2,}/g, " ").replace(/^\s*[,\-–—]\s*/, "").trim();
+  }
+
+  function walk(val: unknown): unknown {
+    if (typeof val === "string") {
+      const cleaned = clean(val);
+      return cleaned.length === 0 ? null : cleaned;
+    }
+    if (Array.isArray(val)) return val.map(walk).filter((v) => v !== null && v !== "");
+    if (val && typeof val === "object") {
+      for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+        (val as Record<string, unknown>)[k] = walk(v);
+      }
+    }
+    return val;
+  }
+
+  walk(obj);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -188,6 +232,9 @@ Deno.serve(async (req) => {
     }
 
     const template = JSON.parse(text);
+
+    // Strip platform watermark/UI text from results
+    stripPlatformText(template);
 
     return new Response(JSON.stringify({ template }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
