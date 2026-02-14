@@ -189,6 +189,57 @@ export function useReels() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: REELS_KEY }),
   });
 
+  const createQuickReelMutation = useMutation({
+    mutationFn: async ({
+      title,
+      text,
+      videoId,
+      startSeconds,
+      endSeconds,
+    }: {
+      title: string;
+      text: string;
+      videoId: string;
+      startSeconds: number;
+      endSeconds: number;
+    }) => {
+      // 1. Insert reel with no phrase
+      const { data: reel, error: reelError } = await supabase
+        .from("reels")
+        .insert({
+          phrase_id: null,
+          title,
+          target_duration_seconds: endSeconds - startSeconds,
+        })
+        .select()
+        .single();
+
+      if (reelError) throw reelError;
+
+      const reelId = (reel as Reel).id;
+
+      // 2. Insert single segment covering the full clip
+      const { error: segError } = await supabase
+        .from("reel_segments")
+        .insert({
+          reel_id: reelId,
+          video_id: videoId,
+          section_text: text,
+          section_index: 0,
+          start_seconds: startSeconds,
+          end_seconds: endSeconds,
+        });
+
+      if (segError) {
+        await supabase.from("reels").delete().eq("id", reelId).catch(() => {});
+        throw segError;
+      }
+
+      return reelId;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: REELS_KEY }),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("reels").delete().eq("id", id);
@@ -202,6 +253,8 @@ export function useReels() {
     isLoading,
     createReel: createMutation.mutateAsync,
     isCreating: createMutation.isPending,
+    createQuickReel: createQuickReelMutation.mutateAsync,
+    isCreatingQuickReel: createQuickReelMutation.isPending,
     deleteReel: (id: string) => deleteMutation.mutate(id),
   };
 }

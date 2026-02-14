@@ -37,9 +37,9 @@ export default function ReelBuilderPage() {
 
   // Text overlay settings
   const [burnText, setBurnText] = useState(true);
-  const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
-  const [textSize, setTextSize] = useState<TextSize>("medium");
-  const [textBorder, setTextBorder] = useState<TextBorder>("outline");
+  const [textPosition, setTextPosition] = useState<TextPosition>("center");
+  const [textSize, setTextSize] = useState<TextSize>("small");
+  const [textBorder, setTextBorder] = useState<TextBorder>("shadow");
   const [textBorderColor, setTextBorderColor] = useState<TextBorderColor>("black");
 
   // Inline preview state
@@ -243,7 +243,7 @@ export default function ReelBuilderPage() {
                   className="text-white font-semibold text-center whitespace-pre-line"
                   style={{
                     fontSize:
-                      textSize === "small" ? 14 : textSize === "large" ? 24 : 18,
+                      textSize === "small" ? 12 : textSize === "large" ? 24 : 18,
                     ...(textBorder === "outline"
                       ? {
                           WebkitTextStroke: `0.8px ${textBorderColor}`,

@@ -10,7 +10,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Sparkle, Copy, Check, Plus } from "@phosphor-icons/react";
+import { Sparkle, Copy, Check, Plus, FilmStrip } from "@phosphor-icons/react";
 import type { VideoAnalysis } from "@/types/video";
 
 interface TextSuggestion {
@@ -33,6 +33,7 @@ interface Props {
   analysis: VideoAnalysis;
   filename: string;
   onSaveAsPhrase: (text: string, tags: string[]) => void;
+  onCreateReel?: (text: string) => void;
 }
 
 export function SuggestTextDialog({
@@ -41,6 +42,7 @@ export function SuggestTextDialog({
   analysis,
   filename,
   onSaveAsPhrase,
+  onCreateReel,
 }: Props) {
   const [step, setStep] = useState<Step>("configure");
   const [length, setLength] = useState("short");
@@ -48,6 +50,7 @@ export function SuggestTextDialog({
   const [error, setError] = useState<string | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [savedIndices, setSavedIndices] = useState<Set<number>>(new Set());
+  const [reelCreatedIndices, setReelCreatedIndices] = useState<Set<number>>(new Set());
   const [showAll, setShowAll] = useState(false);
 
   const INITIAL_COUNT = 3;
@@ -59,6 +62,7 @@ export function SuggestTextDialog({
       setError(null);
       setCopiedIndex(null);
       setSavedIndices(new Set());
+      setReelCreatedIndices(new Set());
       setShowAll(false);
     }
   }, [open]);
@@ -228,6 +232,25 @@ export function SuggestTextDialog({
                             <Plus className="h-3.5 w-3.5" />
                           )}
                         </Button>
+                        {onCreateReel && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => {
+                              setReelCreatedIndices((prev) => new Set(prev).add(i));
+                              onCreateReel(s.text.replace(/\\n/g, "\n"));
+                            }}
+                            disabled={reelCreatedIndices.has(i)}
+                            title="Create reel"
+                          >
+                            {reelCreatedIndices.has(i) ? (
+                              <Check className="h-3.5 w-3.5 text-green-500" />
+                            ) : (
+                              <FilmStrip className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        )}
                       </div>
                     </div>
                     <p className="text-sm whitespace-pre-line">

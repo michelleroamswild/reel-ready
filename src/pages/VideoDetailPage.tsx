@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useVideos } from "@/hooks/use-videos";
 import { usePhrases } from "@/hooks/use-phrases";
+import { useReels } from "@/hooks/use-reels";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -22,6 +23,7 @@ export default function VideoDetailPage() {
   const navigate = useNavigate();
   const { videos, isLoading, analyzeVideo, isAnalyzing, deleteVideo } = useVideos();
   const { addPhrase } = usePhrases();
+  const { createQuickReel } = useReels();
   const [showDelete, setShowDelete] = useState(false);
   const [showSuggestText, setShowSuggestText] = useState(false);
 
@@ -239,6 +241,18 @@ export default function VideoDetailPage() {
           analysis={a}
           filename={video.filename}
           onSaveAsPhrase={(text, tags) => addPhrase(text, tags, "")}
+          onCreateReel={async (text) => {
+            const title = text.length > 40 ? text.slice(0, 40) + "..." : text;
+            const reelId = await createQuickReel({
+              title,
+              text,
+              videoId: video.id,
+              startSeconds: 0,
+              endSeconds: video.duration_seconds ?? 5,
+            });
+            setShowSuggestText(false);
+            navigate(`/reels/${reelId}`);
+          }}
         />
       )}
 

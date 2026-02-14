@@ -152,7 +152,7 @@ async function exportWithText(segments, inputPaths, outputPath, textPosition, te
   const fontFile = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf";
 
   // Font size — scaled to match preview CSS at ~4x (preview: 14/18/24px on ~270px wide → 1080px)
-  const fontSizeMap = { small: 56, medium: 72, large: 96 };
+  const fontSizeMap = { small: 48, medium: 72, large: 96 };
   const fontSize = fontSizeMap[textSize] || 72;
 
   // Border style params for drawtext — scaled to match preview at ~4x
