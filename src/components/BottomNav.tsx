@@ -19,7 +19,7 @@ export function BottomNav() {
             end={to === "/"}
             className={({ isActive }) =>
               cn(
-                "flex flex-1 flex-col items-center gap-0.5 py-2.5 text-xs transition-colors",
+                "flex flex-1 flex-col items-center gap-0.5 py-2.5 sm:py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] pt-3 text-xs transition-colors",
                 isActive ? "text-primary" : "text-muted-foreground"
               )
             }
