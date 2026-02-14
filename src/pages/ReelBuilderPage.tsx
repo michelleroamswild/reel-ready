@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useReel } from "@/hooks/use-reels";
 import { useVideos } from "@/hooks/use-videos";
 import { ArrowsClockwise } from "@phosphor-icons/react";
@@ -24,6 +24,7 @@ import type { TextPosition, TextSize, TextBorder, TextBorderColor } from "@/lib/
 export default function ReelBuilderPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { reel, isLoading, updateSegment, isUpdating, updateTitle, updateTextSettings } = useReel(id);
   const { videos } = useVideos();
 
@@ -31,7 +32,7 @@ export default function ReelBuilderPage() {
   const [swapVideoId, setSwapVideoId] = useState<string>("");
   const [swapStart, setSwapStart] = useState("0");
   const [swapEnd, setSwapEnd] = useState("5");
-  const [showExport, setShowExport] = useState(false);
+  const [showExport, setShowExport] = useState(() => searchParams.get("export") === "true");
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
 
