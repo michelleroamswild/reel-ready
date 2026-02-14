@@ -41,6 +41,7 @@ import {
   Circle,
   X,
 } from "@phosphor-icons/react";
+import { VideoThumbnail } from "@/components/VideoThumbnail";
 import type { ReelWithDetails } from "@/types/reel";
 import type { Phrase } from "@/types/phrase";
 
@@ -317,16 +318,14 @@ export default function ReelsPage() {
                     }`}
                     onClick={() => selecting ? toggleSelect(reel.id) : navigate(`/reels/${reel.id}`)}
                   >
-                    <div className="relative bg-black aspect-[9/16]">
+                    <div className="relative aspect-[9/16]">
                       {firstSeg?.video?.url ? (
-                        <video
+                        <VideoThumbnail
                           src={`${firstSeg.video.url}#t=${firstSeg.start_seconds}`}
-                          preload="metadata"
-                          muted
-                          className="w-full h-full object-cover"
+                          className="w-full h-full"
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center">
+                        <div className="w-full h-full bg-black flex items-center justify-center">
                           <VideoCamera className="h-8 w-8 text-white/30" />
                         </div>
                       )}
@@ -447,16 +446,15 @@ export default function ReelsPage() {
                           )}
                         </div>
                       )}
-                      <div className="shrink-0 w-14 bg-black">
+                      <div className="shrink-0 w-14">
                         {firstSeg?.video?.url ? (
-                          <video
+                          <VideoThumbnail
                             src={`${firstSeg.video.url}#t=${firstSeg.start_seconds}`}
-                            preload="metadata"
-                            muted
-                            className="w-full h-full object-cover aspect-[9/16]"
+                            className="w-full aspect-[9/16]"
+                            iconSize="sm"
                           />
                         ) : (
-                          <div className="w-full aspect-[9/16] flex items-center justify-center">
+                          <div className="w-full aspect-[9/16] bg-black flex items-center justify-center">
                             <VideoCamera className="h-4 w-4 text-white/30" />
                           </div>
                         )}

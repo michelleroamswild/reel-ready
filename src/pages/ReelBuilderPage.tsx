@@ -18,6 +18,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
+import { VideoThumbnail } from "@/components/VideoThumbnail";
 import { ArrowLeft, Play, Export, PencilSimple, Trash } from "@phosphor-icons/react";
 import type { ReelSegmentWithVideo } from "@/types/reel";
 import type { Video } from "@/types/video";
@@ -113,6 +114,9 @@ export default function ReelBuilderPage() {
     video.currentTime = segments[currentIndex]?.start_seconds ?? 0;
     if (playingRef.current) {
       video.play().catch(() => setIsPlaying(false));
+    } else {
+      // On mobile, briefly play+pause to force a frame to render
+      video.play().then(() => { video.pause(); }).catch(() => {});
     }
   }, [currentIndex, segments]);
 
@@ -256,7 +260,7 @@ export default function ReelBuilderPage() {
                     i === currentIndex ? "opacity-100 z-10" : "opacity-0 z-0"
                   }`}
                   playsInline
-                  preload="auto"
+                  preload={i === currentIndex ? "auto" : "metadata"}
                   onTimeUpdate={() => handleTimeUpdate(i)}
                 />
               ))
@@ -609,11 +613,11 @@ export default function ReelBuilderPage() {
                   onClick={() => jumpToSegment(idx)}
                 >
                   {/* Thumbnail */}
-                  <div className="relative aspect-[9/16] bg-muted overflow-hidden rounded-t-lg">
-                    <video
+                  <div className="relative aspect-[9/16] overflow-hidden rounded-t-lg">
+                    <VideoThumbnail
                       src={`${segment.video.url}#t=${segment.start_seconds}`}
-                      preload="metadata"
-                      className="w-full h-full object-cover"
+                      className="w-full h-full"
+                      iconSize="sm"
                     />
                     <div className="absolute top-1.5 left-1.5">
                       <Badge variant="secondary" className="bg-black/60 text-white text-[10px] border-0 px-1.5 py-0">

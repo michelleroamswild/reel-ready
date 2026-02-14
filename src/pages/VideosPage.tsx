@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { FilmStrip, UploadSimple, CaretDown, FileVideo, CopySimple, Trash, ArrowsClockwise, Sparkle, ArrowClockwise } from "@phosphor-icons/react";
+import { VideoThumbnail } from "@/components/VideoThumbnail";
 import type { Video } from "@/types/video";
 
 interface UploadProgress {
@@ -196,10 +197,9 @@ export default function VideosPage() {
               className="relative rounded-lg border bg-card overflow-hidden cursor-pointer group"
               onClick={() => navigate(`/videos/${v.id}`)}
             >
-              <video
+              <VideoThumbnail
                 src={v.url}
-                preload="metadata"
-                className="w-full aspect-[9/16] object-cover"
+                className="w-full aspect-[9/16]"
               />
               {/* Overlay actions */}
               <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
