@@ -151,9 +151,11 @@ async function exportWithText(segments, inputPaths, outputPath, textPosition, te
   // Font — Liberation Sans Bold is a clean sans-serif (like Arial/Helvetica)
   const fontFile = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf";
 
-  // Font size — scaled to match preview CSS at ~4x (preview: 14/18/24px on ~270px wide → 1080px)
-  const fontSizeMap = { small: 48, medium: 72, large: 96 };
-  const fontSize = fontSizeMap[textSize] || 72;
+  // Font size — preview px * 4 for 1080p export. Supports legacy string names too.
+  const fontSizeMap = { small: 36, medium: 72, large: 96 };
+  const fontSize = typeof textSize === "number"
+    ? textSize * 4
+    : (fontSizeMap[textSize] || (Number(textSize) ? Number(textSize) * 4 : 72));
 
   // Border style params for drawtext — scaled to match preview at ~4x
   const borderColor = textBorderColor || "black";

@@ -19,7 +19,7 @@ export interface ExportProgress {
 type ProgressCallback = (progress: ExportProgress) => void;
 
 export type TextPosition = "top" | "center" | "bottom";
-export type TextSize = "small" | "medium" | "large";
+export type TextSize = number;
 export type TextBorder = "outline" | "shadow" | "box";
 export type TextBorderColor = "black" | "white";
 
@@ -56,7 +56,7 @@ export async function exportReel(
     })),
     burnText: options.burnText,
     textPosition: options.textPosition ?? "bottom",
-    textSize: options.textSize ?? "medium",
+    textSize: options.textSize ?? 13,
     textBorder: options.textBorder ?? "outline",
     textBorderColor: options.textBorderColor ?? "black",
   };

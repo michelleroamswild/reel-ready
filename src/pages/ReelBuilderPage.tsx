@@ -16,16 +16,27 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { ArrowLeft, Play, Export } from "@phosphor-icons/react";
+import { Slider } from "@/components/ui/slider";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ArrowLeft, Play, Export, PencilSimple, Trash } from "@phosphor-icons/react";
 import type { ReelSegmentWithVideo } from "@/types/reel";
 import type { Video } from "@/types/video";
 import type { TextPosition, TextSize, TextBorder, TextBorderColor } from "@/lib/ffmpeg";
+
+/** Convert legacy string sizes ("small"/"medium"/"large") to numeric preview px */
+function parseTextSize(value: string | number | undefined): number {
+  if (typeof value === "number") return value;
+  if (value === "small") return 9;
+  if (value === "large") return 24;
+  if (value === "medium") return 18;
+  return 9;
+}
 
 export default function ReelBuilderPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { reel, isLoading, updateSegment, isUpdating, updateTitle, updateTextSettings } = useReel(id);
+  const { reel, isLoading, updateSegment, isUpdating, updateSegmentText, deleteSegment, updateTitle, updateTextSettings } = useReel(id);
   const { videos } = useVideos();
 
   const [swapSegment, setSwapSegment] = useState<ReelSegmentWithVideo | null>(null);
@@ -35,11 +46,16 @@ export default function ReelBuilderPage() {
   const [showExport, setShowExport] = useState(() => searchParams.get("export") === "true");
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
+  const [editingTextSegId, setEditingTextSegId] = useState<string | null>(null);
+  const [textDraft, setTextDraft] = useState("");
+  const [editingPhrase, setEditingPhrase] = useState(false);
+  const [phraseDraft, setPhraseDraft] = useState("");
+  const [applyToAll, setApplyToAll] = useState(false);
 
   // Text overlay settings — initialized from saved reel data
   const [burnText, setBurnText] = useState(true);
   const [textPosition, setTextPosition] = useState<TextPosition>("center");
-  const [textSize, setTextSize] = useState<TextSize>("small");
+  const [textSize, setTextSize] = useState<TextSize>(13);
   const [textBorder, setTextBorder] = useState<TextBorder>("shadow");
   const [textBorderColor, setTextBorderColor] = useState<TextBorderColor>("black");
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -49,7 +65,7 @@ export default function ReelBuilderPage() {
     if (reel && !settingsLoaded) {
       setBurnText(reel.burn_text ?? true);
       setTextPosition((reel.text_position as TextPosition) ?? "center");
-      setTextSize((reel.text_size as TextSize) ?? "small");
+      setTextSize(parseTextSize(reel.text_size) ?? 13);
       setTextBorder((reel.text_border as TextBorder) ?? "shadow");
       setTextBorderColor((reel.text_border_color as TextBorderColor) ?? "black");
       setSettingsLoaded(true);
@@ -69,7 +85,7 @@ export default function ReelBuilderPage() {
       updateTextSettings({
         burn_text: burnText,
         text_position: textPosition,
-        text_size: textSize,
+        text_size: String(textSize),
         text_border: textBorder,
         text_border_color: textBorderColor,
         ...overrides,
@@ -160,7 +176,7 @@ export default function ReelBuilderPage() {
   if (!reel) {
     return (
       <div className="space-y-4">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/reels")}>
+        <Button variant="ghost" size="sm" onClick={() => navigate("/")}>
           <ArrowLeft className="h-4 w-4 mr-1" /> Back
         </Button>
         <p className="text-sm text-muted-foreground text-center py-8">
@@ -199,7 +215,7 @@ export default function ReelBuilderPage() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/reels")}>
+        <Button variant="ghost" size="sm" onClick={() => navigate("/")}>
           <ArrowLeft className="h-4 w-4 mr-1" /> Reels
         </Button>
         <div className="flex gap-2">
@@ -249,11 +265,11 @@ export default function ReelBuilderPage() {
             {/* Play overlay */}
             {current && !isPlaying && (
               <div
-                className="absolute inset-0 z-20 flex items-center justify-center bg-black/30 cursor-pointer"
+                className="absolute inset-0 z-20 cursor-pointer"
                 onClick={handlePlay}
               >
-                <div className="h-14 w-14 rounded-full bg-white/90 flex items-center justify-center">
-                  <Play className="h-7 w-7 text-black ml-0.5" weight="fill" />
+                <div className="absolute bottom-3 left-3 h-10 w-10 rounded-full bg-white/90 flex items-center justify-center">
+                  <Play className="h-5 w-5 text-black ml-0.5" weight="fill" />
                 </div>
               </div>
             )}
@@ -280,8 +296,7 @@ export default function ReelBuilderPage() {
                 <p
                   className="text-white font-semibold text-center whitespace-pre-line"
                   style={{
-                    fontSize:
-                      textSize === "small" ? 12 : textSize === "large" ? 24 : 18,
+                    fontSize: textSize,
                     ...(textBorder === "outline"
                       ? {
                           WebkitTextStroke: `0.8px ${textBorderColor}`,
@@ -369,37 +384,88 @@ export default function ReelBuilderPage() {
             </div>
           </div>
 
-          {/* Phrase card */}
-          {reel.phrase && (
+          {/* Phrase card — shows text for selected segment */}
+          {current && (
             <div className="rounded-lg border bg-muted/50 p-3">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
-                Phrase
-              </p>
-              <p className="text-sm whitespace-pre-line">{reel.phrase.text}</p>
-            </div>
-          )}
-
-          {/* Cloned template card */}
-          {reel.source_template && (
-            <div className="rounded-lg border bg-muted/50 p-3 space-y-2">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
-                Cloned Template
-              </p>
-              <div className="flex gap-2 flex-wrap">
-                <Badge variant="secondary" className="text-xs">
-                  {reel.source_template.segmentCount} template segments
-                </Badge>
-                <Badge variant="outline" className="text-xs capitalize">
-                  {reel.source_template.overallPacing}
-                </Badge>
-                <Badge variant="outline" className="text-xs capitalize">
-                  {reel.source_template.overallMood}
-                </Badge>
-              </div>
-              {reel.source_template.visualStyleNotes && (
-                <p className="text-xs text-muted-foreground">
-                  {reel.source_template.visualStyleNotes}
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Phrase
                 </p>
+                {segments.length > 1 && (
+                  <span className="text-[10px] text-muted-foreground">
+                    Segment {currentIndex + 1}/{segments.length}
+                  </span>
+                )}
+              </div>
+              {editingPhrase ? (
+                <div className="space-y-2">
+                  <textarea
+                    autoFocus
+                    className="text-sm w-full bg-transparent border rounded px-2 py-1.5 outline-none resize-none"
+                    rows={2}
+                    value={phraseDraft}
+                    onChange={(e) => setPhraseDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") { setEditingPhrase(false); setApplyToAll(false); }
+                    }}
+                  />
+                  <div className="flex items-center justify-between">
+                    {segments.length > 1 ? (
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <Checkbox
+                          checked={applyToAll}
+                          onCheckedChange={(v) => setApplyToAll(v === true)}
+                        />
+                        <span className="text-xs text-muted-foreground">Apply to all segments</span>
+                      </label>
+                    ) : (
+                      <div />
+                    )}
+                    <div className="flex gap-1.5">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs px-2"
+                        onClick={() => { setEditingPhrase(false); setApplyToAll(false); }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="h-6 text-xs px-2"
+                        onClick={() => {
+                          const trimmed = phraseDraft.trim();
+                          if (applyToAll) {
+                            segments.forEach((seg) => {
+                              if (seg.section_text !== trimmed) {
+                                updateSegmentText({ segmentId: seg.id, text: trimmed });
+                              }
+                            });
+                          } else if (trimmed !== current.section_text) {
+                            updateSegmentText({ segmentId: current.id, text: trimmed });
+                          }
+                          setEditingPhrase(false);
+                          setApplyToAll(false);
+                        }}
+                      >
+                        Save
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="flex items-start gap-1 cursor-pointer group/phrase"
+                  onClick={() => {
+                    setPhraseDraft(current.section_text);
+                    setEditingPhrase(true);
+                  }}
+                >
+                  <p className="text-sm whitespace-pre-line flex-1">
+                    {current.section_text || <span className="text-muted-foreground italic">Add text...</span>}
+                  </p>
+                  <PencilSimple className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 group-hover/phrase:opacity-100 transition-opacity mt-0.5" />
+                </div>
               )}
             </div>
           )}
@@ -442,22 +508,17 @@ export default function ReelBuilderPage() {
 
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Font size</Label>
-                  <div className="flex gap-1">
-                    {([
-                      { value: "small", label: "S" },
-                      { value: "medium", label: "M" },
-                      { value: "large", label: "L" },
-                    ] as const).map((opt) => (
-                      <Button
-                        key={opt.value}
-                        variant={textSize === opt.value ? "default" : "outline"}
-                        size="sm"
-                        className="flex-1 h-7 text-xs px-1"
-                        onClick={() => { setTextSize(opt.value); saveTextSettings({ text_size: opt.value }); }}
-                      >
-                        {opt.label}
-                      </Button>
-                    ))}
+                  <div className="flex items-center gap-2 h-7">
+                    <span className="text-[10px] text-muted-foreground">A</span>
+                    <Slider
+                      min={9}
+                      max={24}
+                      step={1}
+                      value={[textSize]}
+                      onValueChange={([v]) => { setTextSize(v); saveTextSettings({ text_size: String(v) }); }}
+                      className="flex-1"
+                    />
+                    <span className="text-sm font-medium text-muted-foreground">A</span>
                   </div>
                 </div>
 
@@ -575,7 +636,41 @@ export default function ReelBuilderPage() {
 
                   {/* Content */}
                   <div className="p-2 space-y-1.5">
-                    <p className="text-xs font-medium leading-snug line-clamp-2">{segment.section_text}</p>
+                    {editingTextSegId === segment.id ? (
+                      <textarea
+                        autoFocus
+                        className="text-xs font-medium leading-snug w-full bg-muted border rounded px-2 py-1.5 outline-none resize-none"
+                        rows={2}
+                        value={textDraft}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setTextDraft(e.target.value)}
+                        onBlur={() => {
+                          const trimmed = textDraft.trim();
+                          if (trimmed !== segment.section_text) {
+                            updateSegmentText({ segmentId: segment.id, text: trimmed });
+                          }
+                          setEditingTextSegId(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); }
+                          if (e.key === "Escape") setEditingTextSegId(null);
+                        }}
+                      />
+                    ) : (
+                      <div
+                        className="flex items-start gap-1 rounded bg-muted/50 border border-transparent hover:border-border px-2 py-1.5 cursor-pointer transition-colors group/text"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTextDraft(segment.section_text);
+                          setEditingTextSegId(segment.id);
+                        }}
+                      >
+                        <p className="text-xs font-medium leading-snug line-clamp-2 flex-1">
+                          {segment.section_text || <span className="text-muted-foreground italic">Add text...</span>}
+                        </p>
+                        <PencilSimple className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 group-hover/text:opacity-100 transition-opacity mt-0.5" />
+                      </div>
+                    )}
                     <p className="text-[10px] text-muted-foreground truncate">{segment.video.filename}</p>
                     <div className="flex gap-1.5">
                       <div className="flex-1" onClick={(e) => e.stopPropagation()}>
@@ -610,6 +705,24 @@ export default function ReelBuilderPage() {
                       >
                         <ArrowsClockwise className="h-3 w-3 mr-0.5" />
                         Swap
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-5 text-[10px] px-1.5 text-destructive hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (segments.length <= 1) return;
+                          deleteSegment(segment.id).then(() => {
+                            if (currentIndex >= segments.length - 1 && currentIndex > 0) {
+                              setCurrentIndex(currentIndex - 1);
+                            }
+                          });
+                        }}
+                        disabled={segments.length <= 1}
+                        title={segments.length <= 1 ? "Can't delete the only segment" : "Delete segment"}
+                      >
+                        <Trash className="h-3 w-3" />
                       </Button>
                     </div>
                   </div>

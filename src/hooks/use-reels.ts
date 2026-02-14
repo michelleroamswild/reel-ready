@@ -297,12 +297,40 @@ export function useReel(id: string | undefined) {
     },
   });
 
+  const updateSegmentTextMutation = useMutation({
+    mutationFn: async ({ segmentId, text }: { segmentId: string; text: string }) => {
+      const { error } = await supabase
+        .from("reel_segments")
+        .update({ section_text: text })
+        .eq("id", segmentId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      if (id) queryClient.invalidateQueries({ queryKey: reelKey(id) });
+      queryClient.invalidateQueries({ queryKey: REELS_KEY });
+    },
+  });
+
   const updateTitleMutation = useMutation({
     mutationFn: async (title: string) => {
       const { error } = await supabase
         .from("reels")
         .update({ title })
         .eq("id", id!);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      if (id) queryClient.invalidateQueries({ queryKey: reelKey(id) });
+      queryClient.invalidateQueries({ queryKey: REELS_KEY });
+    },
+  });
+
+  const deleteSegmentMutation = useMutation({
+    mutationFn: async (segmentId: string) => {
+      const { error } = await supabase
+        .from("reel_segments")
+        .delete()
+        .eq("id", segmentId);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -336,6 +364,8 @@ export function useReel(id: string | undefined) {
     isLoading,
     updateSegment: updateSegmentMutation.mutateAsync,
     isUpdating: updateSegmentMutation.isPending,
+    updateSegmentText: updateSegmentTextMutation.mutateAsync,
+    deleteSegment: deleteSegmentMutation.mutateAsync,
     updateTitle: updateTitleMutation.mutateAsync,
     updateTextSettings: updateTextSettingsMutation.mutateAsync,
   };

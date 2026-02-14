@@ -105,10 +105,19 @@ export default function ReelsPage() {
         .slice(0, 50)
         .toLowerCase();
 
+      const parsedSize = (() => {
+        const s = reel.text_size;
+        if (s === "small") return 9;
+        if (s === "medium") return 18;
+        if (s === "large") return 24;
+        const n = Number(s);
+        return n > 0 ? n : 13;
+      })();
+
       await startExport(reel.reel_segments, {
         burnText: reel.burn_text ?? true,
         textPosition: (reel.text_position as "top" | "center" | "bottom") ?? "center",
-        textSize: (reel.text_size as "small" | "medium" | "large") ?? "small",
+        textSize: parsedSize,
         textBorder: (reel.text_border as "outline" | "shadow" | "box") ?? "shadow",
         textBorderColor: (reel.text_border_color as "black" | "white") ?? "black",
         filename: `${safeName}_reel.mp4`,
