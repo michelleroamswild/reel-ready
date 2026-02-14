@@ -738,7 +738,7 @@ export default function ReelBuilderPage() {
         open={swapSegment !== null}
         onOpenChange={(open) => !open && setSwapSegment(null)}
       >
-        <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Swap Clip</DialogTitle>
             <DialogDescription>

@@ -72,7 +72,7 @@ export function NewReelDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
+      <DialogContent>
         {step === "select-phrase" && (
           <>
             <DialogHeader>
