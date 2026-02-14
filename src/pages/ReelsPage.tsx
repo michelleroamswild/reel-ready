@@ -55,6 +55,7 @@ export default function ReelsPage() {
   const [deleteTarget, setDeleteTarget] = useState<ReelWithDetails | null>(null);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [sortNewestFirst, setSortNewestFirst] = useState(true);
+  const [filter, setFilter] = useState<"all" | "cloned" | "matched">("all");
 
   // Selection mode
   const [selecting, setSelecting] = useState(false);
@@ -145,9 +146,15 @@ export default function ReelsPage() {
 
   const isBatchExporting = batchExportIndex >= 0;
 
+  const filteredReels = reels.filter((r) => {
+    if (filter === "cloned") return r.source_template !== null;
+    if (filter === "matched") return r.source_template === null;
+    return true;
+  });
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-2">
         <h1 className="text-lg font-semibold">Reels</h1>
         <div className="flex gap-2">
           {!selecting && (
@@ -192,7 +199,19 @@ export default function ReelsPage() {
               )}
             </div>
           ) : (
-            <div />
+            <div className="flex gap-1">
+              {(["all", "matched", "cloned"] as const).map((f) => (
+                <Button
+                  key={f}
+                  size="sm"
+                  variant={filter === f ? "default" : "outline"}
+                  className="h-7 text-xs px-2.5"
+                  onClick={() => setFilter(f)}
+                >
+                  {f === "all" ? "All" : f === "cloned" ? "Cloned" : "Matched"}
+                </Button>
+              ))}
+            </div>
           )}
           <div className="flex items-center gap-2">
             {!selecting && (
@@ -267,7 +286,7 @@ export default function ReelsPage() {
         <>
           {view === "grid" ? (
             <div className="grid grid-cols-3 gap-3">
-              {reels.map((reel) => {
+              {filteredReels.map((reel) => {
                 const totalDuration = reel.reel_segments.reduce(
                   (sum, seg) => sum + (seg.end_seconds - seg.start_seconds),
                   0
@@ -351,9 +370,16 @@ export default function ReelsPage() {
                             ? `Cloned · ${reel.source_template.overallMood}`
                             : "")}
                       </p>
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                        {reel.reel_segments.length} clip{reel.reel_segments.length !== 1 ? "s" : ""}
-                      </Badge>
+                      <div className="flex gap-1.5 flex-wrap">
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                          {reel.reel_segments.length} clip{reel.reel_segments.length !== 1 ? "s" : ""}
+                        </Badge>
+                        {reel.source_template && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                            Cloned
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -376,7 +402,7 @@ export default function ReelsPage() {
                   {sortNewestFirst ? "Newest first" : "Oldest first"}
                 </Button>
               </div>
-              {[...reels]
+              {[...filteredReels]
                 .sort((a, b) => {
                   const diff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
                   return sortNewestFirst ? diff : -diff;
@@ -445,6 +471,11 @@ export default function ReelsPage() {
                           <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                             {formatDuration(Math.round(totalDuration))}
                           </Badge>
+                          {reel.source_template && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                              Cloned
+                            </Badge>
+                          )}
                           {!selecting && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>

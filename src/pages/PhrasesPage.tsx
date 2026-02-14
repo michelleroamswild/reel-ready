@@ -92,7 +92,7 @@ export default function PhrasesPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-2">
         <h1 className="text-lg font-semibold">Phrases</h1>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

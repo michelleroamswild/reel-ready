@@ -99,7 +99,7 @@ export default function VideosPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-2">
         <h1 className="text-lg font-semibold">Videos</h1>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
