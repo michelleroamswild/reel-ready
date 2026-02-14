@@ -24,7 +24,7 @@ import type { TextPosition, TextSize, TextBorder, TextBorderColor } from "@/lib/
 export default function ReelBuilderPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { reel, isLoading, updateSegment, isUpdating, updateTitle } = useReel(id);
+  const { reel, isLoading, updateSegment, isUpdating, updateTitle, updateTextSettings } = useReel(id);
   const { videos } = useVideos();
 
   const [swapSegment, setSwapSegment] = useState<ReelSegmentWithVideo | null>(null);
@@ -35,12 +35,47 @@ export default function ReelBuilderPage() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
 
-  // Text overlay settings
+  // Text overlay settings — initialized from saved reel data
   const [burnText, setBurnText] = useState(true);
   const [textPosition, setTextPosition] = useState<TextPosition>("center");
   const [textSize, setTextSize] = useState<TextSize>("small");
   const [textBorder, setTextBorder] = useState<TextBorder>("shadow");
   const [textBorderColor, setTextBorderColor] = useState<TextBorderColor>("black");
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+  // Load saved text settings from reel
+  useEffect(() => {
+    if (reel && !settingsLoaded) {
+      setBurnText(reel.burn_text ?? true);
+      setTextPosition((reel.text_position as TextPosition) ?? "center");
+      setTextSize((reel.text_size as TextSize) ?? "small");
+      setTextBorder((reel.text_border as TextBorder) ?? "shadow");
+      setTextBorderColor((reel.text_border_color as TextBorderColor) ?? "black");
+      setSettingsLoaded(true);
+    }
+  }, [reel, settingsLoaded]);
+
+  // Save text settings when they change
+  const saveTextSettings = useCallback(
+    (overrides?: Partial<{
+      burn_text: boolean;
+      text_position: string;
+      text_size: string;
+      text_border: string;
+      text_border_color: string;
+    }>) => {
+      if (!settingsLoaded) return;
+      updateTextSettings({
+        burn_text: burnText,
+        text_position: textPosition,
+        text_size: textSize,
+        text_border: textBorder,
+        text_border_color: textBorderColor,
+        ...overrides,
+      });
+    },
+    [settingsLoaded, burnText, textPosition, textSize, textBorder, textBorderColor, updateTextSettings]
+  );
 
   // Inline preview state
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
@@ -377,7 +412,7 @@ export default function ReelBuilderPage() {
               <Switch
                 id="burn-text-preview"
                 checked={burnText}
-                onCheckedChange={setBurnText}
+                onCheckedChange={(v) => { setBurnText(v); saveTextSettings({ burn_text: v }); }}
               />
             </div>
 
@@ -396,7 +431,7 @@ export default function ReelBuilderPage() {
                         variant={textPosition === opt.value ? "default" : "outline"}
                         size="sm"
                         className="flex-1 h-7 text-xs px-1"
-                        onClick={() => setTextPosition(opt.value)}
+                        onClick={() => { setTextPosition(opt.value); saveTextSettings({ text_position: opt.value }); }}
                       >
                         {opt.label}
                       </Button>
@@ -417,7 +452,7 @@ export default function ReelBuilderPage() {
                         variant={textSize === opt.value ? "default" : "outline"}
                         size="sm"
                         className="flex-1 h-7 text-xs px-1"
-                        onClick={() => setTextSize(opt.value)}
+                        onClick={() => { setTextSize(opt.value); saveTextSettings({ text_size: opt.value }); }}
                       >
                         {opt.label}
                       </Button>
@@ -438,7 +473,7 @@ export default function ReelBuilderPage() {
                         variant={textBorder === opt.value ? "default" : "outline"}
                         size="sm"
                         className="flex-1 h-7 text-xs px-1"
-                        onClick={() => setTextBorder(opt.value)}
+                        onClick={() => { setTextBorder(opt.value); saveTextSettings({ text_border: opt.value }); }}
                       >
                         {opt.label}
                       </Button>
@@ -459,7 +494,7 @@ export default function ReelBuilderPage() {
                           variant={textBorderColor === opt.value ? "default" : "outline"}
                           size="sm"
                           className="flex-1 h-7 text-xs px-1"
-                          onClick={() => setTextBorderColor(opt.value)}
+                          onClick={() => { setTextBorderColor(opt.value); saveTextSettings({ text_border_color: opt.value }); }}
                         >
                           {opt.label}
                         </Button>

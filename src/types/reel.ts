@@ -28,6 +28,11 @@ export interface Reel {
   target_duration_seconds: number;
   status: string;
   source_template: ReelTemplate | null;
+  text_position: string;
+  text_size: string;
+  text_border: string;
+  text_border_color: string;
+  burn_text: boolean;
   created_at: string;
   updated_at: string;
 }

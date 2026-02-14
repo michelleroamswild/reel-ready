@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { VideoCamera, Plus, Trash, LinkSimple } from "@phosphor-icons/react";
+import { VideoCamera, Plus, Trash, LinkSimple, SquaresFour, List, SortAscending, SortDescending } from "@phosphor-icons/react";
 import type { ReelWithDetails } from "@/types/reel";
 import type { Phrase } from "@/types/phrase";
 
@@ -31,6 +31,8 @@ export default function ReelsPage() {
   const [showDialog, setShowDialog] = useState(false);
   const [showCloneDialog, setShowCloneDialog] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ReelWithDetails | null>(null);
+  const [view, setView] = useState<"grid" | "list">("grid");
+  const [sortNewestFirst, setSortNewestFirst] = useState(true);
 
   const handleSubmit = async (phrase: Phrase, title: string, targetDuration: number) => {
     try {
@@ -69,6 +71,31 @@ export default function ReelsPage() {
         </div>
       </div>
 
+      {reels.length > 0 && (
+        <div className="flex justify-end">
+          <div className="flex border rounded-md">
+            <Button
+              size="sm"
+              variant={view === "grid" ? "default" : "ghost"}
+              className="h-8 w-8 p-0 rounded-r-none"
+              onClick={() => setView("grid")}
+              title="Grid view"
+            >
+              <SquaresFour className="h-4 w-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant={view === "list" ? "default" : "ghost"}
+              className="h-8 w-8 p-0 rounded-l-none"
+              onClick={() => setView("list")}
+              title="List view"
+            >
+              <List className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       {isLoading ? (
         <p className="text-sm text-muted-foreground text-center py-8">
           Loading...
@@ -88,57 +115,169 @@ export default function ReelsPage() {
           </Button>
         </div>
       ) : (
-        <div className="space-y-3">
-          {reels.map((reel) => {
-            const totalDuration = reel.reel_segments.reduce(
-              (sum, seg) => sum + (seg.end_seconds - seg.start_seconds),
-              0
-            );
+        <>
+          {view === "grid" ? (
+            <div className="grid grid-cols-3 gap-3">
+              {reels.map((reel) => {
+                const totalDuration = reel.reel_segments.reduce(
+                  (sum, seg) => sum + (seg.end_seconds - seg.start_seconds),
+                  0
+                );
+                const firstSeg = reel.reel_segments[0];
+                const date = new Date(reel.created_at);
+                const dateStr = date.toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                  year: date.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
+                });
 
-            return (
-              <div
-                key={reel.id}
-                className="rounded-lg border bg-card p-3 cursor-pointer hover:bg-accent transition-colors group"
-                onClick={() => navigate(`/reels/${reel.id}`)}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{reel.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                      {reel.phrase?.text ??
-                        (reel.source_template
-                          ? `Cloned · ${reel.source_template.overallMood} · ${reel.source_template.overallPacing}`
-                          : "")}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDeleteTarget(reel);
-                    }}
+                return (
+                  <div
+                    key={reel.id}
+                    className="rounded-lg border bg-card overflow-hidden cursor-pointer hover:border-primary/50 transition-colors group"
+                    onClick={() => navigate(`/reels/${reel.id}`)}
                   >
-                    <Trash className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="flex gap-2 mt-2">
-                  <Badge variant="secondary" className="text-xs">
-                    {reel.reel_segments.length} segment
-                    {reel.reel_segments.length !== 1 ? "s" : ""}
-                  </Badge>
-                  <Badge variant="outline" className="text-xs">
-                    {formatDuration(Math.round(totalDuration))}
-                  </Badge>
-                  <Badge variant="outline" className="text-xs capitalize">
-                    {reel.status}
-                  </Badge>
-                </div>
+                    <div className="relative bg-black aspect-[9/16]">
+                      {firstSeg?.video?.url ? (
+                        <video
+                          src={`${firstSeg.video.url}#t=${firstSeg.start_seconds}`}
+                          preload="metadata"
+                          muted
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <VideoCamera className="h-8 w-8 text-white/30" />
+                        </div>
+                      )}
+                      <div className="absolute bottom-1.5 right-1.5">
+                        <Badge variant="secondary" className="bg-black/60 text-white text-[10px] border-0 px-1.5 py-0">
+                          {formatDuration(Math.round(totalDuration))}
+                        </Badge>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-1 right-1 h-6 w-6 bg-black/40 hover:bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteTarget(reel);
+                        }}
+                      >
+                        <Trash className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <div className="p-2 space-y-1">
+                      <span className="text-[10px] text-muted-foreground">{dateStr}</span>
+                      <p className="text-xs font-medium truncate">{reel.title}</p>
+                      <p className="text-[10px] text-muted-foreground line-clamp-2 leading-snug">
+                        {reel.phrase?.text ??
+                          reel.reel_segments[0]?.section_text ??
+                          (reel.source_template
+                            ? `Cloned · ${reel.source_template.overallMood}`
+                            : "")}
+                      </p>
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                        {reel.reel_segments.length} clip{reel.reel_segments.length !== 1 ? "s" : ""}
+                      </Badge>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <div className="flex justify-end mb-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs text-muted-foreground"
+                  onClick={() => setSortNewestFirst((v) => !v)}
+                >
+                  {sortNewestFirst ? (
+                    <SortDescending className="h-3.5 w-3.5 mr-1" />
+                  ) : (
+                    <SortAscending className="h-3.5 w-3.5 mr-1" />
+                  )}
+                  {sortNewestFirst ? "Newest first" : "Oldest first"}
+                </Button>
               </div>
-            );
-          })}
-        </div>
+              {[...reels]
+                .sort((a, b) => {
+                  const diff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+                  return sortNewestFirst ? diff : -diff;
+                })
+                .map((reel) => {
+                  const totalDuration = reel.reel_segments.reduce(
+                    (sum, seg) => sum + (seg.end_seconds - seg.start_seconds),
+                    0
+                  );
+                  const firstSeg = reel.reel_segments[0];
+                  const date = new Date(reel.created_at);
+                  const dateStr = date.toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    year: date.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
+                  });
+
+                  return (
+                    <div
+                      key={reel.id}
+                      className="rounded-lg border bg-card overflow-hidden cursor-pointer hover:bg-accent transition-colors group flex"
+                      onClick={() => navigate(`/reels/${reel.id}`)}
+                    >
+                      <div className="shrink-0 w-14 bg-black">
+                        {firstSeg?.video?.url ? (
+                          <video
+                            src={`${firstSeg.video.url}#t=${firstSeg.start_seconds}`}
+                            preload="metadata"
+                            muted
+                            className="w-full h-full object-cover aspect-[9/16]"
+                          />
+                        ) : (
+                          <div className="w-full aspect-[9/16] flex items-center justify-center">
+                            <VideoCamera className="h-4 w-4 text-white/30" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0 p-2.5 flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{reel.title}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                            {reel.phrase?.text ??
+                              reel.reel_segments[0]?.section_text ??
+                              (reel.source_template
+                                ? `Cloned · ${reel.source_template.overallMood}`
+                                : "")}
+                          </p>
+                        </div>
+                        <div className="shrink-0 flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">{dateStr}</span>
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                            {reel.reel_segments.length} clip{reel.reel_segments.length !== 1 ? "s" : ""}
+                          </Badge>
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                            {formatDuration(Math.round(totalDuration))}
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteTarget(reel);
+                            }}
+                          >
+                            <Trash className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </>
       )}
 
       <NewReelDialog

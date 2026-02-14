@@ -311,11 +311,32 @@ export function useReel(id: string | undefined) {
     },
   });
 
+  const updateTextSettingsMutation = useMutation({
+    mutationFn: async (settings: {
+      burn_text: boolean;
+      text_position: string;
+      text_size: string;
+      text_border: string;
+      text_border_color: string;
+    }) => {
+      const { error } = await supabase
+        .from("reels")
+        .update(settings)
+        .eq("id", id!);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      if (id) queryClient.invalidateQueries({ queryKey: reelKey(id) });
+      queryClient.invalidateQueries({ queryKey: REELS_KEY });
+    },
+  });
+
   return {
     reel,
     isLoading,
     updateSegment: updateSegmentMutation.mutateAsync,
     isUpdating: updateSegmentMutation.isPending,
     updateTitle: updateTitleMutation.mutateAsync,
+    updateTextSettings: updateTextSettingsMutation.mutateAsync,
   };
 }
