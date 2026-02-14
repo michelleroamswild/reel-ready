@@ -110,13 +110,21 @@ export default function ReelBuilderPage() {
 
   useEffect(() => {
     const video = videoRefs.current[currentIndex];
-    if (!video) return;
-    video.currentTime = segments[currentIndex]?.start_seconds ?? 0;
+    const seg = segments[currentIndex];
+    if (!video || !seg) return;
+
+    // Seek slightly past start to skip black intro frames
+    video.currentTime = Math.min(seg.start_seconds + 0.5, seg.end_seconds - 0.1);
+
     if (playingRef.current) {
+      video.currentTime = seg.start_seconds;
       video.play().catch(() => setIsPlaying(false));
     } else {
       // On mobile, briefly play+pause to force a frame to render
-      video.play().then(() => { video.pause(); }).catch(() => {});
+      const onSeeked = () => {
+        video.play().then(() => { video.pause(); }).catch(() => {});
+      };
+      video.addEventListener("seeked", onSeeked, { once: true });
     }
   }, [currentIndex, segments]);
 
