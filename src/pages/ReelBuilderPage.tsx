@@ -43,27 +43,29 @@ export default function ReelBuilderPage() {
   const [textBorderColor, setTextBorderColor] = useState<TextBorderColor>("black");
 
   // Inline preview state
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [finished, setFinished] = useState(false);
-  const [videoKey, setVideoKey] = useState(0);
 
   const segments = reel?.reel_segments ?? [];
   const current = segments[currentIndex];
 
-  // Force remount video when segment changes
-  const prevIndex = useRef(0);
+  // When currentIndex changes during playback, start playing the new segment
+  const playingRef = useRef(false);
+  playingRef.current = isPlaying;
+
   useEffect(() => {
-    if (prevIndex.current !== currentIndex) {
-      setVideoKey((k) => k + 1);
+    const video = videoRefs.current[currentIndex];
+    if (!video) return;
+    video.currentTime = segments[currentIndex]?.start_seconds ?? 0;
+    if (playingRef.current) {
+      video.play().catch(() => setIsPlaying(false));
     }
-    prevIndex.current = currentIndex;
-  }, [currentIndex]);
+  }, [currentIndex, segments]);
 
   const handlePlay = useCallback(() => {
-    const video = videoRef.current;
-    if (!video || segments.length === 0) return;
+    if (segments.length === 0) return;
 
     if (finished) {
       setFinished(false);
@@ -72,25 +74,28 @@ export default function ReelBuilderPage() {
       return;
     }
 
+    const video = videoRefs.current[currentIndex];
+    if (!video) return;
     setIsPlaying(true);
     video.play().catch(() => setIsPlaying(false));
-  }, [finished, segments.length]);
+  }, [finished, segments.length, currentIndex]);
 
   const handlePause = useCallback(() => {
-    videoRef.current?.pause();
+    const video = videoRefs.current[currentIndex];
+    video?.pause();
     setIsPlaying(false);
-  }, []);
+  }, [currentIndex]);
 
-  const handleTimeUpdate = useCallback(() => {
-    const video = videoRef.current;
-    const seg = segments[currentIndex];
+  const handleTimeUpdate = useCallback((index: number) => {
+    if (index !== currentIndex) return;
+    const video = videoRefs.current[index];
+    const seg = segments[index];
     if (!video || !seg) return;
 
     if (video.currentTime >= seg.end_seconds) {
       video.pause();
-      if (currentIndex < segments.length - 1) {
-        setIsPlaying(true);
-        setCurrentIndex((i) => i + 1);
+      if (index < segments.length - 1) {
+        setCurrentIndex(index + 1);
       } else {
         setIsPlaying(false);
         setFinished(true);
@@ -98,19 +103,13 @@ export default function ReelBuilderPage() {
     }
   }, [currentIndex, segments]);
 
-  const handleLoadedData = useCallback(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    if (isPlaying) {
-      video.play().catch(() => setIsPlaying(false));
-    }
-  }, [isPlaying]);
-
   const jumpToSegment = useCallback((index: number) => {
+    // Pause current segment
+    videoRefs.current[currentIndex]?.pause();
     setCurrentIndex(index);
     setIsPlaying(false);
     setFinished(false);
-  }, []);
+  }, [currentIndex]);
 
   if (isLoading) {
     return (
@@ -191,27 +190,30 @@ export default function ReelBuilderPage() {
         {/* Preview player */}
         <div className="shrink-0 md:w-64 lg:w-72">
           <div className="relative rounded-lg border bg-black aspect-[9/16] overflow-hidden">
-            {current ? (
-              <video
-                key={videoKey}
-                ref={videoRef}
-                src={`${current.video.url}#t=${current.start_seconds}`}
-                className="w-full h-full object-contain"
-                playsInline
-                preload="auto"
-                onLoadedData={handleLoadedData}
-                onTimeUpdate={handleTimeUpdate}
-              />
-            ) : (
+            {segments.length === 0 ? (
               <div className="w-full h-full flex items-center justify-center">
                 <p className="text-sm text-white/50">No segments</p>
               </div>
+            ) : (
+              segments.map((seg, i) => (
+                <video
+                  key={seg.id}
+                  ref={(el) => { videoRefs.current[i] = el; }}
+                  src={`${seg.video.url}#t=${seg.start_seconds}`}
+                  className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-150 ${
+                    i === currentIndex ? "opacity-100 z-10" : "opacity-0 z-0"
+                  }`}
+                  playsInline
+                  preload="auto"
+                  onTimeUpdate={() => handleTimeUpdate(i)}
+                />
+              ))
             )}
 
             {/* Play overlay */}
             {current && !isPlaying && (
               <div
-                className="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer"
+                className="absolute inset-0 z-20 flex items-center justify-center bg-black/30 cursor-pointer"
                 onClick={handlePlay}
               >
                 <div className="h-14 w-14 rounded-full bg-white/90 flex items-center justify-center">
@@ -223,7 +225,7 @@ export default function ReelBuilderPage() {
             {/* Tap to pause */}
             {isPlaying && (
               <div
-                className="absolute inset-0 cursor-pointer"
+                className="absolute inset-0 z-20 cursor-pointer"
                 onClick={handlePause}
               />
             )}
@@ -231,7 +233,7 @@ export default function ReelBuilderPage() {
             {/* Section text overlay */}
             {current && burnText && current.section_text && (
               <div
-                className={`absolute left-0 right-0 px-3 ${
+                className={`absolute left-0 right-0 z-20 px-3 ${
                   textPosition === "top"
                     ? "top-[15%]"
                     : textPosition === "center"
@@ -267,21 +269,25 @@ export default function ReelBuilderPage() {
               </div>
             )}
 
-            {/* Progress dots */}
-            {segments.length > 0 && (
-              <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-1.5">
+            {/* Segment progress bar */}
+            {segments.length > 1 && (
+              <div className="absolute bottom-0 left-0 right-0 z-20 flex h-1">
                 {segments.map((_, i) => (
                   <div
                     key={i}
-                    className={`h-1.5 w-1.5 rounded-full transition-colors cursor-pointer ${
-                      i === currentIndex
-                        ? "bg-white"
-                        : i < currentIndex
-                        ? "bg-white/60"
-                        : "bg-white/30"
-                    }`}
-                    onClick={() => jumpToSegment(i)}
-                  />
+                    className="flex-1 relative"
+                    style={{ borderRight: i < segments.length - 1 ? "1px solid rgba(0,0,0,0.3)" : undefined }}
+                  >
+                    <div
+                      className={`h-full transition-colors ${
+                        i < currentIndex
+                          ? "bg-white/80"
+                          : i === currentIndex
+                          ? "bg-white"
+                          : "bg-white/25"
+                      }`}
+                    />
+                  </div>
                 ))}
               </div>
             )}
@@ -479,7 +485,7 @@ export default function ReelBuilderPage() {
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
             Segments
           </p>
-          <div className="flex gap-3 overflow-x-auto pb-3 -mx-4 px-4 snap-x">
+          <div className="flex gap-3 overflow-x-auto py-1 -my-1 pb-3 -mx-4 px-4 snap-x">
             {reel.reel_segments.map((segment, idx) => {
               const dur = segment.end_seconds - segment.start_seconds;
               const maxDur = segment.video.duration_seconds
@@ -500,13 +506,13 @@ export default function ReelBuilderPage() {
               return (
                 <div
                   key={segment.id}
-                  className={`shrink-0 w-44 rounded-lg border bg-card overflow-hidden cursor-pointer transition-colors snap-start ${
+                  className={`shrink-0 w-44 rounded-lg border bg-card cursor-pointer transition-colors snap-start ${
                     isActive ? "ring-2 ring-primary" : "hover:border-primary/50"
                   }`}
                   onClick={() => jumpToSegment(idx)}
                 >
                   {/* Thumbnail */}
-                  <div className="relative aspect-[9/16] bg-muted">
+                  <div className="relative aspect-[9/16] bg-muted overflow-hidden rounded-t-lg">
                     <video
                       src={`${segment.video.url}#t=${segment.start_seconds}`}
                       preload="metadata"
