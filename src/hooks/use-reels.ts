@@ -13,7 +13,7 @@ async function fetchReels(): Promise<ReelWithDetails[]> {
     .select(
       `
       *,
-      phrase:phrases!phrase_id(id, text, tags),
+      phrase:phrases(id, text, tags),
       reel_segments(
         *,
         video:videos!video_id(id, filename, url, duration_seconds)
@@ -41,7 +41,7 @@ async function fetchReel(id: string): Promise<ReelWithDetails> {
     .select(
       `
       *,
-      phrase:phrases!phrase_id(id, text, tags),
+      phrase:phrases(id, text, tags),
       reel_segments(
         *,
         video:videos!video_id(id, filename, url, duration_seconds)

@@ -121,12 +121,39 @@ export default function ReelBuilderPage() {
       </div>
 
       {/* Phrase card */}
-      <div className="rounded-lg border bg-muted/50 p-3">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
-          Phrase
-        </p>
-        <p className="text-sm whitespace-pre-line">{reel.phrase?.text}</p>
-      </div>
+      {reel.phrase && (
+        <div className="rounded-lg border bg-muted/50 p-3">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+            Phrase
+          </p>
+          <p className="text-sm whitespace-pre-line">{reel.phrase.text}</p>
+        </div>
+      )}
+
+      {/* Cloned template card */}
+      {reel.source_template && (
+        <div className="rounded-lg border bg-muted/50 p-3 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+            Cloned Template
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            <Badge variant="secondary" className="text-xs">
+              {reel.source_template.segmentCount} template segments
+            </Badge>
+            <Badge variant="outline" className="text-xs capitalize">
+              {reel.source_template.overallPacing}
+            </Badge>
+            <Badge variant="outline" className="text-xs capitalize">
+              {reel.source_template.overallMood}
+            </Badge>
+          </div>
+          {reel.source_template.visualStyleNotes && (
+            <p className="text-xs text-muted-foreground">
+              {reel.source_template.visualStyleNotes}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Segment list */}
       {reel.reel_segments.length === 0 ? (

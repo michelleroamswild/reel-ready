@@ -30,10 +30,9 @@ interface Props {
 }
 
 const STAGE_LABELS: Record<ExportStage, string> = {
-  loading: "Loading video engine...",
-  downloading: "Downloading clips...",
-  trimming: "Trimming & normalizing...",
-  concatenating: "Assembling final video...",
+  loading: "Preparing export...",
+  processing: "Server is building your video...",
+  downloading: "Downloading finished video...",
   done: "Export complete!",
   error: "Export failed",
 };

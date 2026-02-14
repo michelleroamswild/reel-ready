@@ -4,6 +4,7 @@ import { useReels } from "@/hooks/use-reels";
 import { usePhrases } from "@/hooks/use-phrases";
 import { useVideos } from "@/hooks/use-videos";
 import { NewReelDialog } from "@/components/NewReelDialog";
+import { CloneReelDialog } from "@/components/CloneReelDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -17,7 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { VideoCamera, Plus, Trash } from "@phosphor-icons/react";
+import { VideoCamera, Plus, Trash, LinkSimple } from "@phosphor-icons/react";
 import type { ReelWithDetails } from "@/types/reel";
 import type { Phrase } from "@/types/phrase";
 
@@ -28,6 +29,7 @@ export default function ReelsPage() {
   const { videos } = useVideos();
   const { toast } = useToast();
   const [showDialog, setShowDialog] = useState(false);
+  const [showCloneDialog, setShowCloneDialog] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ReelWithDetails | null>(null);
 
   const handleSubmit = async (phrase: Phrase, title: string, targetDuration: number) => {
@@ -57,9 +59,14 @@ export default function ReelsPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Reels</h1>
-        <Button size="sm" onClick={() => setShowDialog(true)}>
-          <Plus className="h-4 w-4 mr-1" /> New Reel
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setShowCloneDialog(true)}>
+            <LinkSimple className="h-4 w-4 mr-1" /> Clone
+          </Button>
+          <Button size="sm" onClick={() => setShowDialog(true)}>
+            <Plus className="h-4 w-4 mr-1" /> New Reel
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -98,7 +105,10 @@ export default function ReelsPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{reel.title}</p>
                     <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                      {reel.phrase?.text}
+                      {reel.phrase?.text ??
+                        (reel.source_template
+                          ? `Cloned · ${reel.source_template.overallMood} · ${reel.source_template.overallPacing}`
+                          : "")}
                     </p>
                   </div>
                   <Button
@@ -137,6 +147,16 @@ export default function ReelsPage() {
         phrases={phrases}
         onSubmit={handleSubmit}
         isSubmitting={isCreating}
+      />
+
+      <CloneReelDialog
+        open={showCloneDialog}
+        onOpenChange={setShowCloneDialog}
+        videos={videos}
+        onComplete={(reelId) => {
+          setShowCloneDialog(false);
+          navigate(`/reels/${reelId}`);
+        }}
       />
 
       <AlertDialog
