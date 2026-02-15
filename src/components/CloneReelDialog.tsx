@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useCloneReel } from "@/hooks/use-clone-reel";
+import type { ReelTemplate } from "@/types/reel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +25,7 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   videos: Video[];
   onComplete: (reelId: string) => void;
+  initialTemplate?: ReelTemplate | null;
 }
 
 export function CloneReelDialog({
@@ -31,12 +33,14 @@ export function CloneReelDialog({
   onOpenChange,
   videos,
   onComplete,
+  initialTemplate,
 }: Props) {
   const {
     step,
     template,
     error,
     reset,
+    useFromTemplate,
     downloadFromUrl,
     uploadFile,
     buildReel,
@@ -47,11 +51,15 @@ export function CloneReelDialog({
 
   useEffect(() => {
     if (open) {
-      reset();
       setUrl("");
       setTitle("");
+      if (initialTemplate) {
+        useFromTemplate(initialTemplate);
+      } else {
+        reset();
+      }
     }
-  }, [open, reset]);
+  }, [open, reset, initialTemplate, useFromTemplate]);
 
   useEffect(() => {
     if (template && !title) {

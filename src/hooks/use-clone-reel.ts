@@ -31,6 +31,13 @@ export function useCloneReel() {
     setState({ step: "input", template: null, error: null });
   }, []);
 
+  const useFromTemplate = useCallback(
+    (template: ReelTemplate) => {
+      setState({ step: "review", template, error: null });
+    },
+    []
+  );
+
   const analyzeSource = useCallback(
     async (videoUrl: string, mimeType: string, sourceUrl: string | null) => {
       setState((s) => ({ ...s, step: "analyzing", error: null }));
@@ -225,6 +232,7 @@ export function useCloneReel() {
   return {
     ...state,
     reset,
+    useFromTemplate,
     downloadFromUrl,
     uploadFile,
     buildReel,

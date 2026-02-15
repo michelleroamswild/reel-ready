@@ -10,33 +10,14 @@ export function useTrendingAudio() {
   const query = useQuery({
     queryKey: TRENDING_AUDIO_KEY,
     queryFn: async (): Promise<TrendingAudio[]> => {
-      // First try to get fresh cached data (within 24h)
-      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const { data: cached, error: cacheError } = await supabase
+      const { data, error } = await supabase
         .from("trending_audio")
         .select("*")
-        .gte("fetched_at", cutoff)
-        .order("trend_rank", { ascending: true })
-        .limit(20);
+        .order("fetched_at", { ascending: false })
+        .limit(50);
 
-      if (!cacheError && cached && cached.length > 0) {
-        return cached as TrendingAudio[];
-      }
-
-      // If empty or stale, trigger edge function to refresh
-      const { data: result, error: fnError } =
-        await supabase.functions.invoke("fetch-trending-audio", {
-          body: {},
-        });
-
-      if (fnError) throw fnError;
-
-      let parsed = result;
-      if (typeof result === "string") {
-        parsed = JSON.parse(result);
-      }
-
-      return (parsed?.tracks ?? []) as TrendingAudio[];
+      if (error) throw error;
+      return (data ?? []) as TrendingAudio[];
     },
     staleTime: 60 * 60 * 1000, // 1 hour
     refetchOnWindowFocus: false,

@@ -6,6 +6,7 @@ import { useExportReel } from "@/hooks/use-export-reel";
 import { useGenerateTrialReelsFromVideo } from "@/hooks/use-trial-reels";
 import { CloneReelDialog } from "@/components/CloneReelDialog";
 import { TrialReelDialog } from "@/components/TrialReelDialog";
+import { TemplatePickerDialog } from "@/components/TemplatePickerDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -42,9 +43,10 @@ import {
   X,
   Flask,
   CaretDown,
+  Layout,
 } from "@phosphor-icons/react";
 import { VideoThumbnail } from "@/components/VideoThumbnail";
-import type { ReelWithDetails } from "@/types/reel";
+import type { ReelWithDetails, ReelTemplate } from "@/types/reel";
 
 export default function ReelsPage() {
   const navigate = useNavigate();
@@ -54,6 +56,8 @@ export default function ReelsPage() {
   const { toast } = useToast();
   const [showCloneDialog, setShowCloneDialog] = useState(false);
   const [showTrialDialog, setShowTrialDialog] = useState(false);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [pickedTemplate, setPickedTemplate] = useState<ReelTemplate | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ReelWithDetails | null>(null);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [sortNewestFirst, setSortNewestFirst] = useState(true);
@@ -163,6 +167,9 @@ export default function ReelsPage() {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => setShowCloneDialog(true)}>
                   <LinkSimple className="h-4 w-4 mr-2" /> Clone Reel
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowTemplatePicker(true)}>
+                  <Layout className="h-4 w-4 mr-2" /> From Template
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setShowTrialDialog(true)}>
                   <Flask className="h-4 w-4 mr-2" /> Trial Reels
@@ -552,11 +559,25 @@ export default function ReelsPage() {
 
       <CloneReelDialog
         open={showCloneDialog}
-        onOpenChange={setShowCloneDialog}
+        onOpenChange={(open) => {
+          setShowCloneDialog(open);
+          if (!open) setPickedTemplate(null);
+        }}
         videos={videos}
+        initialTemplate={pickedTemplate}
         onComplete={(reelId) => {
           setShowCloneDialog(false);
+          setPickedTemplate(null);
           navigate(`/reels/${reelId}`);
+        }}
+      />
+
+      <TemplatePickerDialog
+        open={showTemplatePicker}
+        onOpenChange={setShowTemplatePicker}
+        onPick={(template) => {
+          setPickedTemplate(template);
+          setShowCloneDialog(true);
         }}
       />
 

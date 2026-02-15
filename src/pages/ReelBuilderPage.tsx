@@ -300,13 +300,6 @@ export default function ReelBuilderPage() {
             <Flask className="h-4 w-4 mr-1" />
             {generateTrialReels.isPending ? "Generating..." : "Trial Reels"}
           </Button>
-          <Button
-            size="sm"
-            onClick={handlePlay}
-            disabled={reel.reel_segments.length === 0}
-          >
-            <Play className="h-4 w-4 mr-1" /> Preview
-          </Button>
         </div>
       </div>
 
@@ -386,7 +379,7 @@ export default function ReelBuilderPage() {
                   key={seg.id}
                   ref={(el) => { videoRefs.current[i] = el; }}
                   src={`${seg.video.url}#t=${seg.start_seconds}`}
-                  className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-150 ${
+                  className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-150 ${
                     i === currentIndex ? "opacity-100 z-10" : "opacity-0 z-0"
                   }`}
                   playsInline
@@ -619,7 +612,7 @@ export default function ReelBuilderPage() {
             </div>
 
             {burnText && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Position</Label>
                   <div className="flex gap-1">
@@ -1126,43 +1119,39 @@ export default function ReelBuilderPage() {
                         {segment.section_text || <span className="text-muted-foreground italic">Add text...</span>}
                       </p>
                     )}
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <select
+                        className="w-full h-5 bg-muted text-[10px] border rounded px-1 cursor-pointer outline-none"
+                        value={roundedDur}
+                        onChange={(e) => {
+                          const newDur = parseFloat(e.target.value);
+                          updateSegment({
+                            segmentId: segment.id,
+                            videoId: segment.video_id,
+                            startSeconds: segment.start_seconds,
+                            endSeconds: segment.start_seconds + newDur,
+                          });
+                        }}
+                      >
+                        {durOptions.map((d) => (
+                          <option key={d} value={d}>
+                            {d}s
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     <div className="flex gap-1">
-                      <div className="flex-1" onClick={(e) => e.stopPropagation()}>
-                        <select
-                          className="w-full bg-muted text-[9px] border rounded px-0.5 py-0 cursor-pointer outline-none"
-                          value={roundedDur}
-                          onChange={(e) => {
-                            const newDur = parseFloat(e.target.value);
-                            updateSegment({
-                              segmentId: segment.id,
-                              videoId: segment.video_id,
-                              startSeconds: segment.start_seconds,
-                              endSeconds: segment.start_seconds + newDur,
-                            });
-                          }}
-                        >
-                          {durOptions.map((d) => (
-                            <option key={d} value={d}>
-                              {d}s
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-4 text-[9px] px-1"
+                      <button
+                        className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-muted-foreground hover:bg-muted transition-colors"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleOpenSwap(segment);
                         }}
                       >
                         <ArrowsClockwise className="h-2.5 w-2.5" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-4 text-[9px] px-1 text-destructive hover:text-destructive"
+                      </button>
+                      <button
+                        className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-destructive hover:bg-muted transition-colors"
                         onClick={(e) => {
                           e.stopPropagation();
                           deleteSegment(segment.id).then(() => {
@@ -1174,7 +1163,7 @@ export default function ReelBuilderPage() {
                         title="Delete segment"
                       >
                         <Trash className="h-2.5 w-2.5" />
-                      </Button>
+                      </button>
                     </div>
                   </div>
                 </div>
