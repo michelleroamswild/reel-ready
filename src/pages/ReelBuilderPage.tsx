@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useReel } from "@/hooks/use-reels";
 import { useVideos } from "@/hooks/use-videos";
+import { supabase } from "@/lib/supabase";
 import { ArrowsClockwise } from "@phosphor-icons/react";
 import { ExportReelDialog } from "@/components/ExportReelDialog";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VideoThumbnail } from "@/components/VideoThumbnail";
-import { ArrowLeft, Play, Export, PencilSimple, Trash } from "@phosphor-icons/react";
+import { ArrowLeft, Play, Export, PencilSimple, Trash, Sparkle, Copy, Check, PushPin, X } from "@phosphor-icons/react";
 import type { ReelSegmentWithVideo } from "@/types/reel";
 import type { Video } from "@/types/video";
 import type { TextPosition, TextSize, TextBorder, TextBorderColor } from "@/lib/ffmpeg";
@@ -37,7 +38,7 @@ export default function ReelBuilderPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { reel, isLoading, updateSegment, isUpdating, updateSegmentText, deleteSegment, updateTitle, updateTextSettings } = useReel(id);
+  const { reel, isLoading, updateSegment, isUpdating, updateSegmentText, deleteSegment, updateTitle, updateTextSettings, updateSavedCaptions } = useReel(id);
   const { videos } = useVideos();
 
   const [swapSegment, setSwapSegment] = useState<ReelSegmentWithVideo | null>(null);
@@ -60,6 +61,20 @@ export default function ReelBuilderPage() {
   const [textBorder, setTextBorder] = useState<TextBorder>("shadow");
   const [textBorderColor, setTextBorderColor] = useState<TextBorderColor>("black");
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+  // Caption generator state
+  const MOOD_OPTIONS = ["confident", "chill", "emotional", "playful", "edgy"] as const;
+  const TONE_OPTIONS = ["casual", "witty", "inspirational", "storytelling", "minimal"] as const;
+  const [captionMood, setCaptionMood] = useState<string>("playful");
+  const [captionTone, setCaptionTone] = useState<string>("casual");
+  const [generatedCaptions, setGeneratedCaptions] = useState<{ text: string; hashtags: string[] }[]>([]);
+  const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
+  const [captionError, setCaptionError] = useState<string | null>(null);
+  const [copiedCaptionIndex, setCopiedCaptionIndex] = useState<number | null>(null);
+  const TENSE_OPTIONS = ["timeless", "past", "reflective", "any"] as const;
+  const [captionTense, setCaptionTense] = useState<string>("timeless");
+  const [iteratingIndex, setIteratingIndex] = useState<number | null>(null);
+  const [captionIterations, setCaptionIterations] = useState<Record<number, { text: string; hashtags: string[] }[]>>({});
 
   // Load saved text settings from reel
   useEffect(() => {
@@ -269,6 +284,7 @@ export default function ReelBuilderPage() {
                   }`}
                   playsInline
                   preload={i === currentIndex ? "auto" : "metadata"}
+                  poster={seg.video.thumbnail_url ?? undefined}
                   onTimeUpdate={() => handleTimeUpdate(i)}
                 />
               ))
@@ -579,6 +595,335 @@ export default function ReelBuilderPage() {
               </div>
             )}
           </div>
+
+          {/* Caption generator */}
+          <div className="space-y-3 rounded-lg border p-3">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Caption
+            </p>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Mood</Label>
+              <div className="flex gap-1 flex-wrap">
+                {MOOD_OPTIONS.map((m) => (
+                  <Button
+                    key={m}
+                    variant={captionMood === m ? "default" : "outline"}
+                    size="sm"
+                    className="h-7 text-xs px-2 capitalize"
+                    onClick={() => setCaptionMood(m)}
+                  >
+                    {m}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Tone</Label>
+              <div className="flex gap-1 flex-wrap">
+                {TONE_OPTIONS.map((t) => (
+                  <Button
+                    key={t}
+                    variant={captionTone === t ? "default" : "outline"}
+                    size="sm"
+                    className="h-7 text-xs px-2 capitalize"
+                    onClick={() => setCaptionTone(t)}
+                  >
+                    {t}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Tense</Label>
+              <div className="flex gap-1 flex-wrap">
+                {TENSE_OPTIONS.map((te) => (
+                  <Button
+                    key={te}
+                    variant={captionTense === te ? "default" : "outline"}
+                    size="sm"
+                    className="h-7 text-xs px-2 capitalize"
+                    onClick={() => setCaptionTense(te)}
+                  >
+                    {te}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <Button
+              className="w-full"
+              size="sm"
+              disabled={isGeneratingCaption || segments.length === 0}
+              onClick={async () => {
+                setIsGeneratingCaption(true);
+                setCaptionError(null);
+                setGeneratedCaptions([]);
+                setCaptionIterations({});
+                setCopiedCaptionIndex(null);
+                try {
+                  const segmentData = segments.map((seg) => {
+                    const fullVideo = videos.find((v) => v.id === seg.video_id);
+                    return {
+                      section_text: seg.section_text,
+                      analysis: fullVideo?.analysis ?? null,
+                    };
+                  });
+                  const { data, error: fnError } = await supabase.functions.invoke(
+                    "generate-caption",
+                    { body: { mood: captionMood, tone: captionTone, tense: captionTense, segments: segmentData } }
+                  );
+                  if (fnError) throw fnError;
+                  if (data.error) throw new Error(data.error);
+                  setGeneratedCaptions(data.captions ?? []);
+                } catch (err) {
+                  setCaptionError(err instanceof Error ? err.message : "Failed to generate captions");
+                } finally {
+                  setIsGeneratingCaption(false);
+                }
+              }}
+            >
+              {isGeneratingCaption ? (
+                <>
+                  <Sparkle className="h-4 w-4 mr-1 animate-pulse" /> Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkle className="h-4 w-4 mr-1" /> Generate Captions
+                </>
+              )}
+            </Button>
+
+            {captionError && (
+              <p className="text-xs text-destructive">{captionError}</p>
+            )}
+
+            {generatedCaptions.length > 0 && (
+              <div className="space-y-2">
+                {generatedCaptions.map((cap, i) => (
+                  <div key={i} className="rounded-lg border bg-card p-3 space-y-2">
+                    <p className="text-sm whitespace-pre-line">{cap.text}</p>
+                    <div className="flex flex-wrap gap-1">
+                      {cap.hashtags.map((tag) => (
+                        <Badge key={tag} variant="secondary" className="text-[10px]">
+                          #{tag}
+                        </Badge>
+                      ))}
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs px-2"
+                        onClick={async () => {
+                          const formatted = `${cap.text}\n\n${cap.hashtags.map((t) => `#${t}`).join(" ")}`;
+                          await navigator.clipboard.writeText(formatted);
+                          setCopiedCaptionIndex(i);
+                          setTimeout(() => setCopiedCaptionIndex(null), 2000);
+                        }}
+                      >
+                        {copiedCaptionIndex === i ? (
+                          <>
+                            <Check className="h-3.5 w-3.5 mr-1 text-green-500" /> Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3.5 w-3.5 mr-1" /> Copy
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs px-2"
+                        disabled={iteratingIndex !== null}
+                        onClick={async () => {
+                          setIteratingIndex(i);
+                          try {
+                            const segmentData = segments.map((seg) => {
+                              const fullVideo = videos.find((v) => v.id === seg.video_id);
+                              return {
+                                section_text: seg.section_text,
+                                analysis: fullVideo?.analysis ?? null,
+                              };
+                            });
+                            const { data, error: fnError } = await supabase.functions.invoke(
+                              "generate-caption",
+                              {
+                                body: {
+                                  mood: captionMood,
+                                  tone: captionTone,
+                                  tense: captionTense,
+                                  iterateOn: cap.text,
+                                  segments: segmentData,
+                                },
+                              }
+                            );
+                            if (fnError) throw fnError;
+                            if (data.error) throw new Error(data.error);
+                            setCaptionIterations((prev) => ({ ...prev, [i]: data.captions ?? [] }));
+                          } catch (err) {
+                            setCaptionError(err instanceof Error ? err.message : "Failed to iterate");
+                          } finally {
+                            setIteratingIndex(null);
+                          }
+                        }}
+                      >
+                        {iteratingIndex === i ? (
+                          <>
+                            <ArrowsClockwise className="h-3.5 w-3.5 mr-1 animate-spin" /> Iterating...
+                          </>
+                        ) : (
+                          <>
+                            <ArrowsClockwise className="h-3.5 w-3.5 mr-1" /> Iterate
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs px-2"
+                        disabled={reel.saved_captions?.some((sc) => sc.text === cap.text)}
+                        onClick={() => {
+                          const updated = [...(reel.saved_captions ?? []), { text: cap.text, hashtags: cap.hashtags }];
+                          updateSavedCaptions(updated);
+                        }}
+                      >
+                        {reel.saved_captions?.some((sc) => sc.text === cap.text) ? (
+                          <>
+                            <PushPin className="h-3.5 w-3.5 mr-1 text-primary" weight="fill" /> Saved
+                          </>
+                        ) : (
+                          <>
+                            <PushPin className="h-3.5 w-3.5 mr-1" /> Save
+                          </>
+                        )}
+                      </Button>
+                    </div>
+
+                    {/* Nested iterations */}
+                    {captionIterations[i] && (
+                      <div className="ml-3 border-l-2 border-primary/20 pl-3 space-y-2">
+                        <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Variations</p>
+                        {captionIterations[i].map((iter, j) => (
+                          <div key={j} className="rounded-lg border bg-muted/30 p-2.5 space-y-1.5">
+                            <p className="text-sm whitespace-pre-line">{iter.text}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {iter.hashtags.map((tag) => (
+                                <Badge key={tag} variant="secondary" className="text-[10px]">
+                                  #{tag}
+                                </Badge>
+                              ))}
+                            </div>
+                            <div className="flex gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-xs px-2"
+                                onClick={async () => {
+                                  const formatted = `${iter.text}\n\n${iter.hashtags.map((t) => `#${t}`).join(" ")}`;
+                                  await navigator.clipboard.writeText(formatted);
+                                  setCopiedCaptionIndex(i * 100 + j);
+                                  setTimeout(() => setCopiedCaptionIndex(null), 2000);
+                                }}
+                              >
+                                {copiedCaptionIndex === i * 100 + j ? (
+                                  <>
+                                    <Check className="h-3.5 w-3.5 mr-1 text-green-500" /> Copied!
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="h-3.5 w-3.5 mr-1" /> Copy
+                                  </>
+                                )}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-xs px-2"
+                                disabled={reel.saved_captions?.some((sc) => sc.text === iter.text)}
+                                onClick={() => {
+                                  const updated = [...(reel.saved_captions ?? []), { text: iter.text, hashtags: iter.hashtags }];
+                                  updateSavedCaptions(updated);
+                                }}
+                              >
+                                {reel.saved_captions?.some((sc) => sc.text === iter.text) ? (
+                                  <>
+                                    <PushPin className="h-3.5 w-3.5 mr-1 text-primary" weight="fill" /> Saved
+                                  </>
+                                ) : (
+                                  <>
+                                    <PushPin className="h-3.5 w-3.5 mr-1" /> Save
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Saved captions */}
+            {reel.saved_captions?.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Saved
+                </p>
+                {reel.saved_captions.map((cap, i) => (
+                  <div key={i} className="rounded-lg border border-primary/30 bg-card p-3 space-y-2">
+                    <p className="text-sm whitespace-pre-line">{cap.text}</p>
+                    <div className="flex flex-wrap gap-1">
+                      {cap.hashtags.map((tag) => (
+                        <Badge key={tag} variant="secondary" className="text-[10px]">
+                          #{tag}
+                        </Badge>
+                      ))}
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs px-2"
+                        onClick={async () => {
+                          const formatted = `${cap.text}\n\n${cap.hashtags.map((t) => `#${t}`).join(" ")}`;
+                          await navigator.clipboard.writeText(formatted);
+                          setCopiedCaptionIndex(1000 + i);
+                          setTimeout(() => setCopiedCaptionIndex(null), 2000);
+                        }}
+                      >
+                        {copiedCaptionIndex === 1000 + i ? (
+                          <>
+                            <Check className="h-3.5 w-3.5 mr-1 text-green-500" /> Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3.5 w-3.5 mr-1" /> Copy
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs px-2 text-destructive hover:text-destructive"
+                        onClick={() => {
+                          const updated = reel.saved_captions.filter((_, j) => j !== i);
+                          updateSavedCaptions(updated);
+                        }}
+                      >
+                        <X className="h-3.5 w-3.5 mr-1" /> Remove
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -783,10 +1128,11 @@ export default function ReelBuilderPage() {
                       );
                     }}
                   >
-                    <video
+                    <VideoThumbnail
                       src={v.url}
-                      preload="metadata"
-                      className="w-full aspect-[9/16] object-cover"
+                      thumbnailUrl={v.thumbnail_url}
+                      className="w-full aspect-[9/16]"
+                      iconSize="sm"
                     />
                     <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-1 pb-0.5 pt-3">
                       <p className="text-[9px] text-white truncate">

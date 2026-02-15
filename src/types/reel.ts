@@ -21,6 +21,11 @@ export interface ReelTemplate {
   sourceUrl: string | null;
 }
 
+export interface SavedCaption {
+  text: string;
+  hashtags: string[];
+}
+
 export interface Reel {
   id: string;
   phrase_id: string | null;
@@ -33,6 +38,7 @@ export interface Reel {
   text_border: string;
   text_border_color: string;
   burn_text: boolean;
+  saved_captions: SavedCaption[];
   created_at: string;
   updated_at: string;
 }

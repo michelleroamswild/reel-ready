@@ -18,16 +18,35 @@ export async function getUploadUrl(
   return data as UploadUrlResponse;
 }
 
+export class UploadCancelledError extends Error {
+  constructor() {
+    super("Upload cancelled");
+    this.name = "UploadCancelledError";
+  }
+}
+
 export async function uploadToR2(
   file: File,
-  onProgress?: (percent: number) => void
+  onProgress?: (percent: number) => void,
+  signal?: AbortSignal
 ): Promise<{ key: string; url: string }> {
+  if (signal?.aborted) throw new UploadCancelledError();
+
   const { uploadUrl, key, publicUrl } = await getUploadUrl(file.name, file.type);
+
+  if (signal?.aborted) throw new UploadCancelledError();
 
   await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", uploadUrl);
     xhr.setRequestHeader("Content-Type", file.type);
+
+    if (signal) {
+      signal.addEventListener("abort", () => {
+        xhr.abort();
+        reject(new UploadCancelledError());
+      }, { once: true });
+    }
 
     if (onProgress) {
       xhr.upload.onprogress = (e) => {

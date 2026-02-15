@@ -37,8 +37,8 @@ import {
   SortDescending,
   DotsThree,
   Export,
-  CheckCircle,
-  Circle,
+  CheckSquare,
+  Square,
   X,
 } from "@phosphor-icons/react";
 import { VideoThumbnail } from "@/components/VideoThumbnail";
@@ -338,9 +338,9 @@ export default function ReelsPage() {
                       {selecting ? (
                         <div className="absolute top-1.5 left-1.5">
                           {isSelected ? (
-                            <CheckCircle className="h-5 w-5 text-primary drop-shadow" weight="fill" />
+                            <CheckSquare className="h-5 w-5 text-primary drop-shadow" weight="fill" />
                           ) : (
-                            <Circle className="h-5 w-5 text-white/70 drop-shadow" />
+                            <Square className="h-5 w-5 text-white/70 drop-shadow" />
                           )}
                         </div>
                       ) : (
@@ -441,9 +441,9 @@ export default function ReelsPage() {
                       {selecting && (
                         <div className="shrink-0 w-10 flex items-center justify-center">
                           {isSelected ? (
-                            <CheckCircle className="h-5 w-5 text-primary" weight="fill" />
+                            <CheckSquare className="h-5 w-5 text-primary" weight="fill" />
                           ) : (
-                            <Circle className="h-5 w-5 text-muted-foreground" />
+                            <Square className="h-5 w-5 text-muted-foreground" />
                           )}
                         </div>
                       )}

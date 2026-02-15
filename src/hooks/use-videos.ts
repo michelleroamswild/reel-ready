@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import { uploadToR2 } from "@/lib/storage";
+import { uploadToR2, UploadCancelledError } from "@/lib/storage";
 import type { Video, VideoAnalysis } from "@/types/video";
 
 const VIDEOS_KEY = ["videos"];
@@ -80,11 +80,17 @@ export function useVideos() {
     mutationFn: async ({
       file,
       onProgress,
+      videoType,
+      signal,
     }: {
       file: File;
       onProgress?: (percent: number) => void;
+      videoType?: "clip" | "edit";
+      signal?: AbortSignal;
     }) => {
-      const { key, url } = await uploadToR2(file, onProgress);
+      const { key, url } = await uploadToR2(file, onProgress, signal);
+
+      if (signal?.aborted) throw new UploadCancelledError();
 
       const { data, error } = await supabase
         .from("videos")
@@ -94,6 +100,7 @@ export function useVideos() {
           url,
           size_bytes: file.size,
           mime_type: file.type,
+          video_type: videoType ?? "clip",
         })
         .select()
         .single();
@@ -162,6 +169,17 @@ export function useVideos() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: VIDEOS_KEY }),
   });
 
+  const updateVideoMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<Pick<Video, "filename" | "video_type">> }) => {
+      const { error } = await supabase
+        .from("videos")
+        .update(updates)
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: VIDEOS_KEY }),
+  });
+
   return {
     videos,
     isLoading,
@@ -171,5 +189,6 @@ export function useVideos() {
     isAnalyzing: analyzeMutation.isPending,
     deleteVideo: (id: string) => deleteMutation.mutate(id),
     generateThumbnail: (video: Video) => thumbnailMutation.mutate(video),
+    updateVideo: updateVideoMutation.mutate,
   };
 }
