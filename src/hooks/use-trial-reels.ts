@@ -89,6 +89,7 @@ export function useGenerateTrialReels() {
           variantType: string;
           variantLabel: string;
           targetDuration: number;
+          audioSuggestion?: string;
           segments: Array<{
             sectionIndex: number;
             sectionText: string;
@@ -108,6 +109,11 @@ export function useGenerateTrialReels() {
 
         // 4. For each variant: insert reel + segments
         for (const variant of variants) {
+          // For audio variants, append suggestion to the label
+          const label = variant.audioSuggestion
+            ? `${variant.variantLabel} · ${variant.audioSuggestion}`
+            : variant.variantLabel;
+
           // Insert the reel
           const { data: variantReel, error: reelError } = await supabase
             .from("reels")
@@ -117,7 +123,7 @@ export function useGenerateTrialReels() {
               target_duration_seconds: variant.targetDuration,
               trial_batch_id: batchId,
               trial_variant_type: variant.variantType,
-              trial_variant_label: variant.variantLabel,
+              trial_variant_label: label,
               // Copy text settings from base reel
               text_position: reel.text_position,
               text_size: reel.text_size,
@@ -313,6 +319,7 @@ export function useGenerateTrialReelsFromVideo() {
           variantType: string;
           variantLabel: string;
           targetDuration: number;
+          audioSuggestion?: string;
           segments: Array<{
             sectionIndex: number;
             sectionText: string;
@@ -331,6 +338,10 @@ export function useGenerateTrialReelsFromVideo() {
 
         // 6. Create variant reels
         for (const variant of variants) {
+          const label = variant.audioSuggestion
+            ? `${variant.variantLabel} · ${variant.audioSuggestion}`
+            : variant.variantLabel;
+
           const { data: variantReel, error: vrError } = await supabase
             .from("reels")
             .insert({
@@ -339,7 +350,7 @@ export function useGenerateTrialReelsFromVideo() {
               target_duration_seconds: variant.targetDuration,
               trial_batch_id: batchId,
               trial_variant_type: variant.variantType,
-              trial_variant_label: variant.variantLabel,
+              trial_variant_label: label,
             })
             .select()
             .single();

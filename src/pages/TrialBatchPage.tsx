@@ -161,7 +161,7 @@ export default function TrialBatchPage() {
         <div className="flex flex-col items-center justify-center py-12 text-center space-y-3">
           <CircleNotch className="h-8 w-8 text-muted-foreground animate-spin" />
           <p className="text-sm text-muted-foreground">
-            Generating 5 variant reels...
+            Generating variant reels...
           </p>
         </div>
       )}

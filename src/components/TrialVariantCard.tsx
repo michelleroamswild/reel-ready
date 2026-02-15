@@ -2,16 +2,14 @@ import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { VideoThumbnail } from "@/components/VideoThumbnail";
-import { ArrowRight, VideoCamera } from "@phosphor-icons/react";
+import { ArrowRight, VideoCamera, MusicNote } from "@phosphor-icons/react";
 import type { ReelWithDetails } from "@/types/reel";
 import type { TrialVariantType } from "@/types/trial";
 
 const VARIANT_COLORS: Record<TrialVariantType, string> = {
-  hook: "bg-orange-500/15 text-orange-700 border-orange-500/30",
-  pacing: "bg-blue-500/15 text-blue-700 border-blue-500/30",
-  tone: "bg-purple-500/15 text-purple-700 border-purple-500/30",
-  structure: "bg-green-500/15 text-green-700 border-green-500/30",
-  format: "bg-pink-500/15 text-pink-700 border-pink-500/30",
+  text: "bg-purple-500/15 text-purple-700 border-purple-500/30",
+  visual: "bg-blue-500/15 text-blue-700 border-blue-500/30",
+  audio: "bg-orange-500/15 text-orange-700 border-orange-500/30",
 };
 
 interface TrialVariantCardProps {
@@ -26,6 +24,10 @@ export function TrialVariantCard({ reel }: TrialVariantCardProps) {
     (sum, seg) => sum + (seg.end_seconds - seg.start_seconds),
     0
   );
+
+  // Audio suggestion is stored in trial_variant_label for audio variants
+  // with format "Label | suggestion details"
+  const isAudio = variantType === "audio";
 
   return (
     <div
@@ -59,6 +61,18 @@ export function TrialVariantCard({ reel }: TrialVariantCardProps) {
             >
               {firstSeg.section_text}
             </p>
+          </div>
+        )}
+
+        {/* Audio suggestion overlay */}
+        {isAudio && (
+          <div className="absolute bottom-1.5 left-1.5 right-1.5 z-10">
+            <div className="bg-orange-500/80 rounded px-1.5 py-0.5 flex items-center gap-1">
+              <MusicNote className="h-2.5 w-2.5 text-white shrink-0" weight="fill" />
+              <p className="text-[8px] text-white font-medium truncate">
+                Change audio
+              </p>
+            </div>
           </div>
         )}
       </div>

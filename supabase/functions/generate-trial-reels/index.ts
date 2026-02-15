@@ -119,56 +119,13 @@ Deno.serve(async (req) => {
 
     const needsText = generateText || !baseReel.phraseText;
 
-    const textInstruction = needsText
-      ? `\n\nTEXT GENERATION: No text overlay has been provided yet. You must FIRST craft a compelling, short text overlay phrase (2-8 words, punchy, social-media style) based on the video content and mood. Use this generated text as the sectionText for every segment in every variant (except the "tone" variant which should shift the framing). Also return this text in a top-level "baseText" field so it can be applied to the base reel.`
+    const textGenBlock = needsText
+      ? `\n\nTEXT GENERATION: No text overlay has been provided yet. You must FIRST craft a compelling, short text overlay phrase (2-8 words, punchy, social-media style) based on the video content and mood. This is the "base text." Use it as the sectionText for visual and audio variants. For text variants, each one gets its own rewritten text. Also return the base text in a top-level "baseText" field.`
       : "";
 
     const baseTextLine = needsText ? "" : `Phrase text: "${baseReel.phraseText}"`;
 
-    const textRule = needsText
-      ? "- Every segment needs sectionText — use your generated base text (except tone variant which shifts framing)"
-      : "- Every segment needs section_text (copy from base reel unless variant type is \"tone\")";
-
-    const responseFormat = needsText
-      ? `{
-  "baseText": "<the generated text overlay phrase>",
-  "variants": [
-    {
-      "variantType": "hook",
-      "variantLabel": "<short descriptive label>",
-      "targetDuration": <number>,
-      "segments": [
-        {
-          "sectionIndex": 0,
-          "sectionText": "<text>",
-          "videoId": "<exact UUID>",
-          "startSeconds": <number>,
-          "endSeconds": <number>
-        }
-      ]
-    }
-  ]
-}`
-      : `{
-  "variants": [
-    {
-      "variantType": "hook",
-      "variantLabel": "<short descriptive label>",
-      "targetDuration": <number>,
-      "segments": [
-        {
-          "sectionIndex": 0,
-          "sectionText": "<text>",
-          "videoId": "<exact UUID>",
-          "startSeconds": <number>,
-          "endSeconds": <number>
-        }
-      ]
-    }
-  ]
-}`;
-
-    const prompt = `You are a creative director helping A/B test short-form social media reels. Given a base reel and a pool of videos, generate 5 variant reels that each test ONE variable while keeping everything else the same.${textInstruction}
+    const prompt = `You are a creative director helping A/B test short-form social media reels. Given a base reel and a pool of videos, generate variant reels that each isolate ONE variable. The goal is to learn what drives engagement.${textGenBlock}
 
 BASE REEL:
 Title: "${baseReel.title}"
@@ -180,29 +137,52 @@ ${baseSegmentDescriptions}
 AVAILABLE VIDEO POOL (${analyzedVideos.length} videos):
 ${videoDescriptions}
 
-Generate exactly 5 variants, one for each type:
+VARIANT TYPES — each variant changes EXACTLY ONE variable:
 
-1. **hook** — Change ONLY the first segment's video and/or timestamp to create a more attention-grabbing opening. Keep all other segments identical. Pick a video moment with high energy, dramatic motion, or visual impact.
+**"text" variants** — Change ONLY the text overlay. Keep the EXACT same videos, timestamps, segment order, and durations. Rewrite the sectionText on every segment to take a different angle. You MUST generate at least 3 text variants from these approaches (pick the ones that fit the content best):
+  - **Bold claim**: A confident, declarative statement ("This changes everything", "The secret nobody talks about")
+  - **Question**: Hook with a question that creates curiosity ("What if you could...?", "Ever wonder why...?")
+  - **Emotional**: Tap into feelings — nostalgia, longing, pride, joy ("The moment it all clicked", "This feeling never gets old")
+  - **Curiosity / watch this**: Tease or challenge the viewer to keep watching ("Wait for it", "Watch what happens next", "You won't believe this")
+  - **Relatable / POV**: Frame it as a shared experience ("POV: you finally...", "That moment when...")
 
-2. **pacing** — Keep the SAME videos and SAME order, but change segment durations. Create a version with faster cuts (shorter segments) or slower holds (longer segments). Each segment must still be 2-8s. Total duration can differ from original.
+**"visual" variant** — Change ONLY the visuals. Keep the SAME text on every segment (use base text${needsText ? " you generated" : ""}). Change which videos are used, their timestamps, segment order, or pacing (cut lengths). Pick different clips from the pool, try a different opening shot, reorder for impact, or change segment durations. Maximum 1 visual variant.
 
-3. **tone** — Keep the SAME videos and SAME timing, but change the section_text on each segment to shift the emotional framing. The overall meaning should stay similar but the vibe should be noticeably different (e.g., more confident, more vulnerable, more playful).
+**"audio" variant** — Keep the SAME text AND the SAME visuals/timestamps as the base reel. This variant flags that the user should try different background audio. Include an "audioSuggestion" field describing what audio style/track to try (e.g., "Trending lo-fi beat", "Upbeat pop instrumental", "Cinematic bass drop for the hook"). Maximum 1 audio variant.
 
-4. **structure** — Reorder the segments. Try peak-first (most impactful clip first), reverse order, or bookend (strong open + strong close). Keep the same videos and durations, just change the order.
-
-5. **format** — Change the total duration. If the original is longer (15s+), create a punchier shorter version by dropping segments. If shorter (<15s), create an extended version by adding segments from the video pool. Minimum 2 segments.
+DECIDE HOW MANY: Generate 3-5 variants total. You MUST include at least 3 text variants. Add a visual variant if the video pool has good alternative clips. Add an audio variant if the content would benefit from a different sound. Use your judgment — only include variants that would meaningfully test something different.
 
 CRITICAL RULES:
+- variantType MUST be exactly "text", "visual", or "audio"
 - videoId MUST be an exact UUID from the video pool above (the value inside videoId="...")
 - startSeconds and endSeconds must be within each video's actual duration
 - Each segment must be at least 2 seconds long
-${textRule}
-- Give each variant a short, descriptive label (e.g., "High-energy open", "Quick cuts", "Emotional reframe", "Peak-first order", "30s extended cut")
+- For "text" variants: SAME videos/timestamps/order as base, DIFFERENT sectionText
+- For "visual" variant: SAME sectionText as base${needsText ? " (use your generated base text)" : ""}, DIFFERENT videos/timestamps/order
+- For "audio" variant: SAME everything as base, just add audioSuggestion
+- Give each variant a short, descriptive label (e.g., "Bold claim", "Question hook", "Emotional pull", "New opening shot", "Lo-fi chill beat")
 
 Respond with JSON in this exact format:
-${responseFormat}
+{${needsText ? '\n  "baseText": "<the generated base text overlay phrase>",' : ""}
+  "variants": [
+    {
+      "variantType": "text" | "visual" | "audio",
+      "variantLabel": "<short descriptive label>",
+      "targetDuration": <number>,
+      "audioSuggestion": "<only for audio variants, omit otherwise>",
+      "segments": [
+        {
+          "sectionIndex": 0,
+          "sectionText": "<text>",
+          "videoId": "<exact UUID>",
+          "startSeconds": <number>,
+          "endSeconds": <number>
+        }
+      ]
+    }
+  ]
+}
 
-Return exactly 5 variants in the order: hook, pacing, tone, structure, format.
 Only return the JSON object, nothing else.`;
 
     const geminiResponse = await fetch(GEMINI_URL, {

@@ -1,6 +1,6 @@
 import type { ReelWithDetails } from "./reel";
 
-export type TrialVariantType = "hook" | "pacing" | "tone" | "structure" | "format";
+export type TrialVariantType = "text" | "visual" | "audio";
 
 export interface TrialBatch {
   id: string;

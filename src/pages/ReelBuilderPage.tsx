@@ -1252,9 +1252,10 @@ export default function ReelBuilderPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Generate Trial Reels</AlertDialogTitle>
             <AlertDialogDescription>
-              This will create 5 variant reels testing hooks, pacing, tone,
-              structure, and format. Each variant changes one variable while
-              keeping everything else the same.
+              This will generate 3-5 variant reels, each isolating one
+              variable — text, visuals, or audio — while keeping everything
+              else the same. Includes multiple text angles like bold claims,
+              questions, and emotional hooks.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1274,7 +1275,7 @@ export default function ReelBuilderPage() {
                 }
               }}
             >
-              <Flask className="h-4 w-4 mr-1" /> Generate 5 Variants
+              <Flask className="h-4 w-4 mr-1" /> Generate Variants
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

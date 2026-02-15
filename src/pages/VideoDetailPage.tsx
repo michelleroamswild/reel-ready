@@ -349,9 +349,10 @@ export default function VideoDetailPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Generate Trial Reels</AlertDialogTitle>
             <AlertDialogDescription>
-              This will create a base reel from this video and generate 5
-              variants testing hooks, pacing, tone, structure, and format. AI
-              will also generate text overlays automatically.
+              This will create a base reel from this video and generate 3-5
+              variants, each isolating one variable — text, visuals, or
+              audio. AI will generate text overlays and multiple angles
+              like bold claims, questions, and emotional hooks.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -370,7 +371,7 @@ export default function VideoDetailPage() {
                 }
               }}
             >
-              <Flask className="h-4 w-4 mr-1" /> Generate 5 Variants
+              <Flask className="h-4 w-4 mr-1" /> Generate Variants
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
