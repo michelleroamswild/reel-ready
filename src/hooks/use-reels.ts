@@ -359,6 +359,20 @@ export function useReel(id: string | undefined) {
     },
   });
 
+  const updateSavedCaptionsMutation = useMutation({
+    mutationFn: async (captions: { text: string; hashtags: string[] }[]) => {
+      const { error } = await supabase
+        .from("reels")
+        .update({ saved_captions: captions })
+        .eq("id", id!);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      if (id) queryClient.invalidateQueries({ queryKey: reelKey(id) });
+      queryClient.invalidateQueries({ queryKey: REELS_KEY });
+    },
+  });
+
   return {
     reel,
     isLoading,
@@ -368,5 +382,6 @@ export function useReel(id: string | undefined) {
     deleteSegment: deleteSegmentMutation.mutateAsync,
     updateTitle: updateTitleMutation.mutateAsync,
     updateTextSettings: updateTextSettingsMutation.mutateAsync,
+    updateSavedCaptions: updateSavedCaptionsMutation.mutateAsync,
   };
 }
