@@ -26,8 +26,14 @@ export function TrialVariantCard({ reel }: TrialVariantCardProps) {
   );
 
   // Audio suggestion is stored in trial_variant_label for audio variants
-  // with format "Label | suggestion details"
   const isAudio = variantType === "audio";
+
+  // Extract track reference from audio label (contains " — " or " by ")
+  const audioLabel = reel.trial_variant_label ?? "";
+  const trackMatch =
+    isAudio && (audioLabel.includes(" — ") || audioLabel.includes(" by "))
+      ? audioLabel.split(" · ").slice(1).join(" · ") || null
+      : null;
 
   return (
     <div
@@ -92,6 +98,14 @@ export function TrialVariantCard({ reel }: TrialVariantCardProps) {
           <p className="text-xs font-medium truncate">
             {reel.trial_variant_label}
           </p>
+        )}
+        {trackMatch && (
+          <div className="flex items-center gap-1">
+            <MusicNote className="h-2.5 w-2.5 text-orange-600 shrink-0" weight="fill" />
+            <p className="text-[10px] text-orange-600 font-medium truncate">
+              {trackMatch}
+            </p>
+          </div>
         )}
         <div className="flex gap-1.5 flex-wrap">
           <Badge variant="secondary" className="text-[10px] px-1.5 py-0">

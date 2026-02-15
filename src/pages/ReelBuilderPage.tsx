@@ -4,7 +4,7 @@ import { useReel } from "@/hooks/use-reels";
 import { useVideos } from "@/hooks/use-videos";
 import { supabase } from "@/lib/supabase";
 import { ArrowsClockwise } from "@phosphor-icons/react";
-import { useGenerateTrialReels } from "@/hooks/use-trial-reels";
+import { useGenerateTrialReels, useTrialBatchesForReel, useTrialBatch, useDeleteTrialBatch, useRegenerateVariant } from "@/hooks/use-trial-reels";
 import { ExportReelDialog } from "@/components/ExportReelDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,14 +27,23 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { TrialReelDialog } from "@/components/TrialReelDialog";
+import { TrialVariantCard } from "@/components/TrialVariantCard";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VideoThumbnail } from "@/components/VideoThumbnail";
-import { ArrowLeft, Play, Export, PencilSimple, Trash, Sparkle, Copy, Check, PushPin, X, Flask } from "@phosphor-icons/react";
+import { ArrowLeft, Play, Export, PencilSimple, Trash, Sparkle, Copy, Check, PushPin, X, Flask, MusicNote } from "@phosphor-icons/react";
+import type { TrialVariantType } from "@/types/trial";
 import type { ReelSegmentWithVideo } from "@/types/reel";
 import type { Video } from "@/types/video";
 import type { TextPosition, TextSize, TextBorder, TextBorderColor } from "@/lib/ffmpeg";
+
+const VARIANT_COLORS: Record<TrialVariantType, string> = {
+  text: "bg-purple-500/15 text-purple-700 border-purple-500/30",
+  visual: "bg-blue-500/15 text-blue-700 border-blue-500/30",
+  audio: "bg-orange-500/15 text-orange-700 border-orange-500/30",
+};
 
 /** Convert legacy string sizes ("small"/"medium"/"large") to numeric preview px */
 function parseTextSize(value: string | number | undefined): number {
@@ -52,6 +61,10 @@ export default function ReelBuilderPage() {
   const { reel, isLoading, updateSegment, isUpdating, updateSegmentText, deleteSegment, updateTitle, updateTextSettings, updateSavedCaptions } = useReel(id);
   const { videos } = useVideos();
   const generateTrialReels = useGenerateTrialReels();
+  const { data: trialBatches } = useTrialBatchesForReel(id);
+  const { data: parentBatch } = useTrialBatch(reel?.trial_batch_id ?? undefined);
+  const deleteTrialBatch = useDeleteTrialBatch();
+  const regenerateVariant = useRegenerateVariant();
 
   const [swapSegment, setSwapSegment] = useState<ReelSegmentWithVideo | null>(null);
   const [swapVideoId, setSwapVideoId] = useState<string>("");
@@ -90,6 +103,7 @@ export default function ReelBuilderPage() {
 
   // Trial reels state
   const [showTrialConfirm, setShowTrialConfirm] = useState(false);
+  const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
 
   // Load saved text settings from reel
   useEffect(() => {
@@ -257,8 +271,16 @@ export default function ReelBuilderPage() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/")}>
-          <ArrowLeft className="h-4 w-4 mr-1" /> Reels
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() =>
+            parentBatch?.base_reel
+              ? navigate(`/reels/${parentBatch.base_reel.id}`)
+              : navigate("/")
+          }
+        >
+          <ArrowLeft className="h-4 w-4 mr-1" /> {parentBatch?.base_reel ? "Back to reel" : "Reels"}
         </Button>
         <div className="flex gap-2">
           <Button
@@ -288,19 +310,66 @@ export default function ReelBuilderPage() {
         </div>
       </div>
 
-      {/* Trial batch link */}
-      {reel.trial_batch_id && (
-        <div
-          className="rounded-lg border bg-muted/50 px-3 py-2 flex items-center gap-2 cursor-pointer hover:bg-muted transition-colors"
-          onClick={() => navigate(`/trials/${reel.trial_batch_id}`)}
-        >
-          <Flask className="h-4 w-4 text-muted-foreground shrink-0" />
-          <p className="text-xs text-muted-foreground">
-            Part of trial batch —{" "}
-            <span className="text-primary hover:underline">View all variants</span>
-          </p>
-        </div>
-      )}
+      {/* Variant info banner (for variant reels) */}
+      {reel.trial_batch_id && (() => {
+        const variantType = reel.trial_variant_type as TrialVariantType | null;
+        const audioLabel = reel.trial_variant_label ?? "";
+        const audioSuggestion =
+          variantType === "audio" && (audioLabel.includes(" — ") || audioLabel.includes(" by "))
+            ? audioLabel.split(" · ").slice(1).join(" · ") || null
+            : null;
+
+        return (
+          <div className="rounded-lg border bg-muted/50 px-3 py-2 space-y-2">
+            {variantType && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge
+                  className={`text-[10px] border px-1.5 py-0 capitalize ${
+                    VARIANT_COLORS[variantType] ?? ""
+                  }`}
+                >
+                  {variantType} variant
+                </Badge>
+                {reel.trial_variant_label && (
+                  <span className="text-xs text-muted-foreground truncate flex-1">
+                    {reel.trial_variant_label}
+                  </span>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 text-xs px-2 ml-auto"
+                  disabled={regenerateVariant.isPending}
+                  onClick={() => {
+                    regenerateVariant.mutate({ variantReel: reel, videos });
+                  }}
+                >
+                  <ArrowsClockwise className={`h-3.5 w-3.5 mr-1 ${regenerateVariant.isPending ? "animate-spin" : ""}`} />
+                  {regenerateVariant.isPending ? "Regenerating..." : "Regenerate"}
+                </Button>
+              </div>
+            )}
+            {audioSuggestion && (
+              <div className="flex items-center gap-1.5 rounded bg-orange-500/10 px-2 py-1.5">
+                <MusicNote className="h-3.5 w-3.5 text-orange-600 shrink-0" weight="fill" />
+                <p className="text-xs font-medium text-orange-700">
+                  {audioSuggestion}
+                </p>
+              </div>
+            )}
+            <div
+              className="flex items-center gap-2 cursor-pointer hover:bg-muted rounded px-1 py-0.5 -mx-1 transition-colors"
+              onClick={() => navigate(`/trials/${reel.trial_batch_id}`)}
+            >
+              <Flask className="h-4 w-4 text-muted-foreground shrink-0" />
+              <p className="text-xs text-muted-foreground">
+                Part of trial batch —{" "}
+                <span className="text-primary hover:underline">View all variants</span>
+              </p>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Top row: Preview + details side by side */}
       <div className="flex flex-col md:flex-row gap-6">
@@ -965,19 +1034,19 @@ export default function ReelBuilderPage() {
         </div>
       </div>
 
-      {/* Segment strip — horizontal scroll */}
+      {/* Segment strip — horizontal scroll (hidden for single-segment reels) */}
       {reel.reel_segments.length === 0 ? (
         <div className="text-center py-8">
           <p className="text-sm text-muted-foreground">
             No segments yet. Delete this reel and create a new one.
           </p>
         </div>
-      ) : (
+      ) : reel.reel_segments.length > 1 && (
         <div>
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
             Segments
           </p>
-          <div className="flex gap-3 overflow-x-auto py-1 -my-1 pb-3 -mx-4 px-4 snap-x">
+          <div className="flex gap-2 overflow-x-auto py-1 -my-1 pb-2 -mx-4 px-4 snap-x">
             {reel.reel_segments.map((segment, idx) => {
               const dur = segment.end_seconds - segment.start_seconds;
               const maxDur = segment.video.duration_seconds
@@ -998,44 +1067,37 @@ export default function ReelBuilderPage() {
               return (
                 <div
                   key={segment.id}
-                  className={`shrink-0 w-44 rounded-lg border bg-card cursor-pointer transition-colors snap-start ${
+                  className={`shrink-0 w-28 rounded-md border bg-card cursor-pointer transition-colors snap-start ${
                     isActive ? "ring-2 ring-primary" : "hover:border-primary/50"
                   }`}
                   onClick={() => jumpToSegment(idx)}
                 >
                   {/* Thumbnail */}
-                  <div className="relative aspect-[9/16] overflow-hidden rounded-t-lg">
+                  <div className="relative aspect-square overflow-hidden rounded-t-md">
                     <VideoThumbnail
                       src={`${segment.video.url}#t=${segment.start_seconds}`}
                       thumbnailUrl={segment.video.thumbnail_url}
                       className="w-full h-full"
                       iconSize="sm"
                     />
-                    <div className="absolute top-1.5 left-1.5">
-                      <Badge variant="secondary" className="bg-black/60 text-white text-[10px] border-0 px-1.5 py-0">
+                    <div className="absolute top-1 left-1">
+                      <Badge variant="secondary" className="bg-black/60 text-white text-[9px] border-0 px-1 py-0">
                         #{segment.section_index + 1}
                       </Badge>
                     </div>
-                    <div className="absolute top-1.5 right-1.5">
-                      <Badge variant="secondary" className="bg-black/60 text-white text-[10px] border-0 px-1.5 py-0">
+                    <div className="absolute top-1 right-1">
+                      <Badge variant="secondary" className="bg-black/60 text-white text-[9px] border-0 px-1 py-0">
                         {roundedDur}s
                       </Badge>
                     </div>
-                    {segment.score != null && (
-                      <div className="absolute bottom-1.5 left-1.5">
-                        <Badge variant="secondary" className="bg-black/60 text-white text-[10px] border-0 px-1.5 py-0">
-                          {segment.score}
-                        </Badge>
-                      </div>
-                    )}
                   </div>
 
                   {/* Content */}
-                  <div className="p-2 space-y-1.5">
+                  <div className="p-1.5 space-y-1">
                     {editingTextSegId === segment.id ? (
                       <textarea
                         autoFocus
-                        className="text-xs font-medium leading-snug w-full bg-muted border rounded px-2 py-1.5 outline-none resize-none"
+                        className="text-[10px] font-medium leading-snug w-full bg-muted border rounded px-1.5 py-1 outline-none resize-none"
                         rows={2}
                         value={textDraft}
                         onClick={(e) => e.stopPropagation()}
@@ -1053,25 +1115,21 @@ export default function ReelBuilderPage() {
                         }}
                       />
                     ) : (
-                      <div
-                        className="flex items-start gap-1 rounded bg-muted/50 border border-transparent hover:border-border px-2 py-1.5 cursor-pointer transition-colors group/text"
+                      <p
+                        className="text-[10px] font-medium leading-snug line-clamp-1 cursor-pointer hover:text-primary/80 transition-colors"
                         onClick={(e) => {
                           e.stopPropagation();
                           setTextDraft(segment.section_text);
                           setEditingTextSegId(segment.id);
                         }}
                       >
-                        <p className="text-xs font-medium leading-snug line-clamp-2 flex-1">
-                          {segment.section_text || <span className="text-muted-foreground italic">Add text...</span>}
-                        </p>
-                        <PencilSimple className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 group-hover/text:opacity-100 transition-opacity mt-0.5" />
-                      </div>
+                        {segment.section_text || <span className="text-muted-foreground italic">Add text...</span>}
+                      </p>
                     )}
-                    <p className="text-[10px] text-muted-foreground truncate">{segment.video.filename}</p>
-                    <div className="flex gap-1.5">
+                    <div className="flex gap-1">
                       <div className="flex-1" onClick={(e) => e.stopPropagation()}>
                         <select
-                          className="w-full bg-muted text-[10px] border rounded px-1 py-0.5 cursor-pointer outline-none"
+                          className="w-full bg-muted text-[9px] border rounded px-0.5 py-0 cursor-pointer outline-none"
                           value={roundedDur}
                           onChange={(e) => {
                             const newDur = parseFloat(e.target.value);
@@ -1093,32 +1151,29 @@ export default function ReelBuilderPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-5 text-[10px] px-1.5"
+                        className="h-4 text-[9px] px-1"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleOpenSwap(segment);
                         }}
                       >
-                        <ArrowsClockwise className="h-3 w-3 mr-0.5" />
-                        Swap
+                        <ArrowsClockwise className="h-2.5 w-2.5" />
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-5 text-[10px] px-1.5 text-destructive hover:text-destructive"
+                        className="h-4 text-[9px] px-1 text-destructive hover:text-destructive"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (segments.length <= 1) return;
                           deleteSegment(segment.id).then(() => {
                             if (currentIndex >= segments.length - 1 && currentIndex > 0) {
                               setCurrentIndex(currentIndex - 1);
                             }
                           });
                         }}
-                        disabled={segments.length <= 1}
-                        title={segments.length <= 1 ? "Can't delete the only segment" : "Delete segment"}
+                        title="Delete segment"
                       >
-                        <Trash className="h-3 w-3" />
+                        <Trash className="h-2.5 w-2.5" />
                       </Button>
                     </div>
                   </div>
@@ -1126,6 +1181,51 @@ export default function ReelBuilderPage() {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Trial batches for this base reel */}
+      {!reel.trial_batch_id && trialBatches && trialBatches.length > 0 && (
+        <div className="space-y-3">
+          {trialBatches.map((batch) => (
+            <div key={batch.id} className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Flask className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Trial batch · {new Date(batch.created_at).toLocaleDateString()}{" "}
+                    · {batch.status}
+                  </p>
+                </div>
+                <div className="flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs px-2"
+                    onClick={() => navigate(`/trials/${batch.id}`)}
+                  >
+                    View batch
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs px-2 text-destructive hover:text-destructive"
+                    onClick={() => setDeletingBatchId(batch.id)}
+                    disabled={deleteTrialBatch.isPending}
+                  >
+                    <Trash className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+              {batch.reels.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                  {batch.reels.map((variantReel) => (
+                    <TrialVariantCard key={variantReel.id} reel={variantReel} />
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
@@ -1246,40 +1346,55 @@ export default function ReelBuilderPage() {
         textBorderColor={textBorderColor}
       />
 
-      {/* Trial reels confirmation dialog */}
-      <AlertDialog open={showTrialConfirm} onOpenChange={setShowTrialConfirm}>
+      {/* Delete trial batch confirmation */}
+      <AlertDialog
+        open={deletingBatchId !== null}
+        onOpenChange={(open) => !open && setDeletingBatchId(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Generate Trial Reels</AlertDialogTitle>
+            <AlertDialogTitle>Delete trial batch?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will generate 3-5 variant reels, each isolating one
-              variable — text, visuals, or audio — while keeping everything
-              else the same. Includes multiple text angles like bold claims,
-              questions, and emotional hooks.
+              This will permanently delete this trial batch and all its variant reels. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={async () => {
-                setShowTrialConfirm(false);
-                try {
-                  const batchId = await generateTrialReels.mutateAsync({
-                    reel,
-                    videos,
-                  });
-                  navigate(`/trials/${batchId}`);
-                } catch (err) {
-                  // Error is handled by the mutation; toast or similar could be added
-                  console.error("Failed to generate trial reels:", err);
-                }
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (!deletingBatchId || !id) return;
+                deleteTrialBatch.mutate(
+                  { batchId: deletingBatchId, baseReelId: id },
+                  { onSettled: () => setDeletingBatchId(null) }
+                );
               }}
             >
-              <Flask className="h-4 w-4 mr-1" /> Generate Variants
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Trial reels dialog */}
+      <TrialReelDialog
+        open={showTrialConfirm}
+        onOpenChange={setShowTrialConfirm}
+        isPending={generateTrialReels.isPending}
+        onGenerate={async (opts) => {
+          setShowTrialConfirm(false);
+          try {
+            const batchId = await generateTrialReels.mutateAsync({
+              reel,
+              videos,
+              ...opts,
+            });
+            navigate(`/trials/${batchId}`);
+          } catch (err) {
+            console.error("Failed to generate trial reels:", err);
+          }
+        }}
+      />
     </div>
   );
 }

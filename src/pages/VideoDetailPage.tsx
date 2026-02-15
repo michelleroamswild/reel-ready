@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { SuggestTextDialog } from "@/components/SuggestTextDialog";
+import { TrialReelDialog } from "@/components/TrialReelDialog";
 import { ArrowLeft, Trash, ArrowsClockwise, Sparkle, ArrowClockwise, ChatText, PencilSimple, FilmStrip, VideoCamera, Flask } from "@phosphor-icons/react";
 import { useGenerateTrialReelsFromVideo } from "@/hooks/use-trial-reels";
 import { useState } from "react";
@@ -344,38 +345,24 @@ export default function VideoDetailPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={showTrialConfirm} onOpenChange={setShowTrialConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Generate Trial Reels</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will create a base reel from this video and generate 3-5
-              variants, each isolating one variable — text, visuals, or
-              audio. AI will generate text overlays and multiple angles
-              like bold claims, questions, and emotional hooks.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={async () => {
-                setShowTrialConfirm(false);
-                try {
-                  const batchId = await generateTrialReels.mutateAsync({
-                    video,
-                    allVideos: videos,
-                  });
-                  navigate(`/trials/${batchId}`);
-                } catch (err) {
-                  console.error("Failed to generate trial reels:", err);
-                }
-              }}
-            >
-              <Flask className="h-4 w-4 mr-1" /> Generate Variants
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <TrialReelDialog
+        open={showTrialConfirm}
+        onOpenChange={setShowTrialConfirm}
+        isPending={generateTrialReels.isPending}
+        onGenerate={async (opts) => {
+          setShowTrialConfirm(false);
+          try {
+            const batchId = await generateTrialReels.mutateAsync({
+              video,
+              allVideos: videos,
+              ...opts,
+            });
+            navigate(`/trials/${batchId}`);
+          } catch (err) {
+            console.error("Failed to generate trial reels:", err);
+          }
+        }}
+      />
     </div>
   );
 }

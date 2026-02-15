@@ -1,11 +1,11 @@
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useReels } from "@/hooks/use-reels";
-import { usePhrases } from "@/hooks/use-phrases";
 import { useVideos } from "@/hooks/use-videos";
 import { useExportReel } from "@/hooks/use-export-reel";
-import { NewReelDialog } from "@/components/NewReelDialog";
+import { useGenerateTrialReelsFromVideo } from "@/hooks/use-trial-reels";
 import { CloneReelDialog } from "@/components/CloneReelDialog";
+import { TrialReelDialog } from "@/components/TrialReelDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -40,19 +40,20 @@ import {
   CheckSquare,
   Square,
   X,
+  Flask,
+  CaretDown,
 } from "@phosphor-icons/react";
 import { VideoThumbnail } from "@/components/VideoThumbnail";
 import type { ReelWithDetails } from "@/types/reel";
-import type { Phrase } from "@/types/phrase";
 
 export default function ReelsPage() {
   const navigate = useNavigate();
-  const { reels, isLoading, createReel, isCreating, deleteReel } = useReels();
-  const { phrases } = usePhrases();
+  const { reels, isLoading, deleteReel } = useReels();
   const { videos } = useVideos();
+  const generateTrialReels = useGenerateTrialReelsFromVideo();
   const { toast } = useToast();
-  const [showDialog, setShowDialog] = useState(false);
   const [showCloneDialog, setShowCloneDialog] = useState(false);
+  const [showTrialDialog, setShowTrialDialog] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ReelWithDetails | null>(null);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [sortNewestFirst, setSortNewestFirst] = useState(true);
@@ -131,22 +132,6 @@ export default function ReelsPage() {
     toast({ title: `Exported ${selectedReels.length} reel${selectedReels.length !== 1 ? "s" : ""}` });
   }, [reels, selected, startExport, resetExport, exitSelecting, toast]);
 
-  const handleSubmit = async (phrase: Phrase, title: string, targetDuration: number) => {
-    try {
-      const reelId = await createReel({ phrase, title, targetDuration, videos });
-      setShowDialog(false);
-      navigate(`/reels/${reelId}`);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Something went wrong";
-      toast({
-        variant: "destructive",
-        title: "Failed to build reel",
-        description: message,
-      });
-    }
-  };
-
   const formatDuration = (seconds: number) => {
     if (seconds < 60) return `${seconds}s`;
     const m = Math.floor(seconds / 60);
@@ -168,14 +153,22 @@ export default function ReelsPage() {
         <h1 className="text-lg font-semibold">Reels</h1>
         <div className="flex gap-2">
           {!selecting && (
-            <>
-              <Button size="sm" variant="outline" onClick={() => setShowCloneDialog(true)}>
-                <LinkSimple className="h-4 w-4 mr-1" /> Clone
-              </Button>
-              <Button size="sm" onClick={() => setShowDialog(true)}>
-                <Plus className="h-4 w-4 mr-1" /> New Reel
-              </Button>
-            </>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm">
+                  <Plus className="h-4 w-4 mr-1" /> New Reel
+                  <CaretDown className="h-3 w-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setShowCloneDialog(true)}>
+                  <LinkSimple className="h-4 w-4 mr-2" /> Clone Reel
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowTrialDialog(true)}>
+                  <Flask className="h-4 w-4 mr-2" /> Trial Reels
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       </div>
@@ -282,15 +275,23 @@ export default function ReelsPage() {
         <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
           <VideoCamera className="h-12 w-12 text-muted-foreground" />
           <p className="text-sm text-muted-foreground max-w-xs">
-            No reels yet. Select a phrase and let AI build a storyboard!
+            No reels yet. Clone a trending reel or generate trial variants!
           </p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowDialog(true)}
-          >
-            New Reel
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCloneDialog(true)}
+            >
+              <LinkSimple className="h-4 w-4 mr-1" /> Clone Reel
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setShowTrialDialog(true)}
+            >
+              <Flask className="h-4 w-4 mr-1" /> Trial Reels
+            </Button>
+          </div>
         </div>
       ) : (
         <>
@@ -520,12 +521,33 @@ export default function ReelsPage() {
         </>
       )}
 
-      <NewReelDialog
-        open={showDialog}
-        onOpenChange={setShowDialog}
-        phrases={phrases}
-        onSubmit={handleSubmit}
-        isSubmitting={isCreating}
+      <TrialReelDialog
+        open={showTrialDialog}
+        onOpenChange={setShowTrialDialog}
+        videos={videos}
+        isPending={generateTrialReels.isPending}
+        onGenerate={async (opts) => {
+          if (!opts.selectedVideo) return;
+          setShowTrialDialog(false);
+          try {
+            const batchId = await generateTrialReels.mutateAsync({
+              video: opts.selectedVideo,
+              allVideos: videos,
+              trendingAudio: opts.trendingAudio,
+              referencePatterns: opts.referencePatterns,
+              referenceUrls: opts.referenceUrls,
+            });
+            navigate(`/trials/${batchId}`);
+          } catch (err) {
+            const message =
+              err instanceof Error ? err.message : "Something went wrong";
+            toast({
+              variant: "destructive",
+              title: "Failed to generate trial reels",
+              description: message,
+            });
+          }
+        }}
       />
 
       <CloneReelDialog
