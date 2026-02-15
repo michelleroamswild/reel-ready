@@ -4,6 +4,7 @@ import { useReel } from "@/hooks/use-reels";
 import { useVideos } from "@/hooks/use-videos";
 import { supabase } from "@/lib/supabase";
 import { ArrowsClockwise } from "@phosphor-icons/react";
+import { useGenerateTrialReels } from "@/hooks/use-trial-reels";
 import { ExportReelDialog } from "@/components/ExportReelDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,11 +17,21 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VideoThumbnail } from "@/components/VideoThumbnail";
-import { ArrowLeft, Play, Export, PencilSimple, Trash, Sparkle, Copy, Check, PushPin, X } from "@phosphor-icons/react";
+import { ArrowLeft, Play, Export, PencilSimple, Trash, Sparkle, Copy, Check, PushPin, X, Flask } from "@phosphor-icons/react";
 import type { ReelSegmentWithVideo } from "@/types/reel";
 import type { Video } from "@/types/video";
 import type { TextPosition, TextSize, TextBorder, TextBorderColor } from "@/lib/ffmpeg";
@@ -40,6 +51,7 @@ export default function ReelBuilderPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { reel, isLoading, updateSegment, isUpdating, updateSegmentText, deleteSegment, updateTitle, updateTextSettings, updateSavedCaptions } = useReel(id);
   const { videos } = useVideos();
+  const generateTrialReels = useGenerateTrialReels();
 
   const [swapSegment, setSwapSegment] = useState<ReelSegmentWithVideo | null>(null);
   const [swapVideoId, setSwapVideoId] = useState<string>("");
@@ -75,6 +87,9 @@ export default function ReelBuilderPage() {
   const [captionTense, setCaptionTense] = useState<string>("timeless");
   const [iteratingIndex, setIteratingIndex] = useState<number | null>(null);
   const [captionIterations, setCaptionIterations] = useState<Record<number, { text: string; hashtags: string[] }[]>>({});
+
+  // Trial reels state
+  const [showTrialConfirm, setShowTrialConfirm] = useState(false);
 
   // Load saved text settings from reel
   useEffect(() => {
@@ -255,6 +270,15 @@ export default function ReelBuilderPage() {
             <Export className="h-4 w-4 mr-1" /> Export
           </Button>
           <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowTrialConfirm(true)}
+            disabled={reel.reel_segments.length === 0 || generateTrialReels.isPending}
+          >
+            <Flask className="h-4 w-4 mr-1" />
+            {generateTrialReels.isPending ? "Generating..." : "Trial Reels"}
+          </Button>
+          <Button
             size="sm"
             onClick={handlePlay}
             disabled={reel.reel_segments.length === 0}
@@ -263,6 +287,20 @@ export default function ReelBuilderPage() {
           </Button>
         </div>
       </div>
+
+      {/* Trial batch link */}
+      {reel.trial_batch_id && (
+        <div
+          className="rounded-lg border bg-muted/50 px-3 py-2 flex items-center gap-2 cursor-pointer hover:bg-muted transition-colors"
+          onClick={() => navigate(`/trials/${reel.trial_batch_id}`)}
+        >
+          <Flask className="h-4 w-4 text-muted-foreground shrink-0" />
+          <p className="text-xs text-muted-foreground">
+            Part of trial batch —{" "}
+            <span className="text-primary hover:underline">View all variants</span>
+          </p>
+        </div>
+      )}
 
       {/* Top row: Preview + details side by side */}
       <div className="flex flex-col md:flex-row gap-6">
@@ -1207,6 +1245,40 @@ export default function ReelBuilderPage() {
         textBorder={textBorder}
         textBorderColor={textBorderColor}
       />
+
+      {/* Trial reels confirmation dialog */}
+      <AlertDialog open={showTrialConfirm} onOpenChange={setShowTrialConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Generate Trial Reels</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will create 5 variant reels testing hooks, pacing, tone,
+              structure, and format. Each variant changes one variable while
+              keeping everything else the same.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                setShowTrialConfirm(false);
+                try {
+                  const batchId = await generateTrialReels.mutateAsync({
+                    reel,
+                    videos,
+                  });
+                  navigate(`/trials/${batchId}`);
+                } catch (err) {
+                  // Error is handled by the mutation; toast or similar could be added
+                  console.error("Failed to generate trial reels:", err);
+                }
+              }}
+            >
+              <Flask className="h-4 w-4 mr-1" /> Generate 5 Variants
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
