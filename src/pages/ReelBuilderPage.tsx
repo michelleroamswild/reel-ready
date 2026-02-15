@@ -33,7 +33,7 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VideoThumbnail } from "@/components/VideoThumbnail";
-import { ArrowLeft, Play, Export, PencilSimple, Trash, Sparkle, Copy, Check, PushPin, X, Flask, MusicNote } from "@phosphor-icons/react";
+import { ArrowLeft, Play, Export, PencilSimple, Trash, Sparkle, Copy, Check, PushPin, X, Flask, MusicNote, CaretLeft, CaretRight, CircleNotch } from "@phosphor-icons/react";
 import type { TrialVariantType } from "@/types/trial";
 import type { ReelSegmentWithVideo } from "@/types/reel";
 import type { Video } from "@/types/video";
@@ -68,13 +68,13 @@ export default function ReelBuilderPage() {
 
   const [swapSegment, setSwapSegment] = useState<ReelSegmentWithVideo | null>(null);
   const [swapVideoId, setSwapVideoId] = useState<string>("");
-  const [swapStart, setSwapStart] = useState("0");
-  const [swapEnd, setSwapEnd] = useState("5");
+  const [swapSuggesting, setSwapSuggesting] = useState(false);
   const [showExport, setShowExport] = useState(() => searchParams.get("export") === "true");
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [editingTextSegId, setEditingTextSegId] = useState<string | null>(null);
   const [textDraft, setTextDraft] = useState("");
+  const [findingBestSegId, setFindingBestSegId] = useState<string | null>(null);
   const [editingPhrase, setEditingPhrase] = useState(false);
   const [phraseDraft, setPhraseDraft] = useState("");
   const [applyToAll, setApplyToAll] = useState(false);
@@ -247,25 +247,148 @@ export default function ReelBuilderPage() {
     0
   );
 
+  const handleFindBest = async (segment: ReelSegmentWithVideo) => {
+    if (findingBestSegId) return;
+    setFindingBestSegId(segment.id);
+    try {
+      const clipDur = Math.round((segment.end_seconds - segment.start_seconds) * 10) / 10;
+      const videoDur = segment.video.duration_seconds ?? clipDur;
+
+      const { data, error } = await supabase.functions.invoke("analyze-video", {
+        body: { videoUrl: segment.video.url, mimeType: "video/mp4" },
+      });
+
+      if (error) throw error;
+      let parsed = data;
+      if (typeof data === "string") parsed = JSON.parse(data);
+      if (parsed.error) throw new Error(parsed.error);
+
+      const analysis = parsed.analysis;
+      const segments: Array<{ startSeconds: number; endSeconds: number; description: string }> =
+        analysis?.segments ?? [];
+
+      // Find the segment window with the most action/movement
+      // Score each possible window by how many analyzed segments overlap it
+      let bestStart = segment.start_seconds;
+      let bestScore = -1;
+
+      const step = 0.5;
+      for (let s = 0; s <= videoDur - clipDur; s = Math.round((s + step) * 10) / 10) {
+        const e = s + clipDur;
+        let score = 0;
+        for (const seg of segments) {
+          // Calculate overlap
+          const overlapStart = Math.max(s, seg.startSeconds);
+          const overlapEnd = Math.min(e, seg.endSeconds);
+          if (overlapEnd > overlapStart) {
+            score += overlapEnd - overlapStart;
+            // Bonus for segments with descriptions suggesting movement
+            const desc = (seg.description || "").toLowerCase();
+            if (/walk|run|move|danc|jump|turn|pan|zoom|action|dynamic/.test(desc)) {
+              score += (overlapEnd - overlapStart) * 0.5;
+            }
+          }
+        }
+        if (score > bestScore) {
+          bestScore = score;
+          bestStart = s;
+        }
+      }
+
+      const newStart = Math.round(bestStart * 10) / 10;
+      const newEnd = Math.round((bestStart + clipDur) * 10) / 10;
+
+      if (newStart !== segment.start_seconds || newEnd !== segment.end_seconds) {
+        await updateSegment({
+          segmentId: segment.id,
+          videoId: segment.video_id,
+          startSeconds: newStart,
+          endSeconds: newEnd,
+        });
+      }
+    } catch (err) {
+      console.error("Find best moment failed:", err);
+    } finally {
+      setFindingBestSegId(null);
+    }
+  };
+
   const handleOpenSwap = (segment: ReelSegmentWithVideo) => {
     setSwapSegment(segment);
     setSwapVideoId(segment.video_id);
-    setSwapStart(segment.start_seconds.toString());
-    setSwapEnd(segment.end_seconds.toString());
   };
 
   const handleConfirmSwap = async () => {
     if (!swapSegment) return;
+    const segDuration = swapSegment.end_seconds - swapSegment.start_seconds;
+    const newVideo = videos.find((v) => v.id === swapVideoId);
+    const maxEnd = newVideo?.duration_seconds ?? segDuration;
+    const end = Math.min(segDuration, maxEnd);
     await updateSegment({
       segmentId: swapSegment.id,
       videoId: swapVideoId,
-      startSeconds: parseFloat(swapStart) || 0,
-      endSeconds: parseFloat(swapEnd) || 5,
+      startSeconds: 0,
+      endSeconds: Math.round(end * 10) / 10,
     });
     setSwapSegment(null);
   };
 
-  const selectedSwapVideo = videos.find((v) => v.id === swapVideoId);
+  const handleSuggestSwap = async () => {
+    if (!swapSegment || swapSuggesting) return;
+    setSwapSuggesting(true);
+    try {
+      const segDuration = swapSegment.end_seconds - swapSegment.start_seconds;
+      const analysis = swapSegment.video.analysis as Record<string, unknown> | null;
+
+      const template = {
+        totalDurationSeconds: segDuration,
+        segmentCount: 1,
+        segments: [{
+          index: 0,
+          startSeconds: 0,
+          endSeconds: segDuration,
+          durationSeconds: segDuration,
+          textOverlay: swapSegment.section_text || null,
+          mood: (analysis?.mood as string) || "neutral",
+          energy: (analysis?.energy as string) || "medium",
+          visualDescription: (analysis?.visuals as string) || "",
+        }],
+        overallMood: (analysis?.mood as string) || "neutral",
+        overallEnergy: (analysis?.energy as string) || "medium",
+        overallPacing: "moderate",
+        visualStyleNotes: "",
+        textOverlayStyle: null,
+      };
+
+      const usedVideoIds = new Set(
+        segments
+          .filter((s) => s.id !== swapSegment.id)
+          .map((s) => s.video_id)
+      );
+      const availableVideos = videos
+        .filter((v) => !usedVideoIds.has(v.id) && v.id !== swapSegment.video_id)
+        .map((v) => ({
+          id: v.id,
+          filename: v.filename,
+          duration_seconds: v.duration_seconds,
+          analysis: v.analysis,
+        }));
+
+      if (availableVideos.length === 0) return;
+
+      const { data, error } = await supabase.functions.invoke("clone-reel-segments", {
+        body: { template, videos: availableVideos },
+      });
+
+      if (!error && data?.segments?.[0]) {
+        setSwapVideoId(data.segments[0].videoId);
+      }
+    } catch (err) {
+      console.error("Suggest swap failed:", err);
+    } finally {
+      setSwapSuggesting(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -1060,8 +1183,8 @@ export default function ReelBuilderPage() {
               return (
                 <div
                   key={segment.id}
-                  className={`shrink-0 w-28 rounded-md border bg-card cursor-pointer transition-colors snap-start ${
-                    isActive ? "ring-2 ring-primary" : "hover:border-primary/50"
+                  className={`shrink-0 w-28 rounded-md border-2 bg-card cursor-pointer transition-colors snap-start ${
+                    isActive ? "border-primary" : "border-border hover:border-primary/50"
                   }`}
                   onClick={() => jumpToSegment(idx)}
                 >
@@ -1119,26 +1242,77 @@ export default function ReelBuilderPage() {
                         {segment.section_text || <span className="text-muted-foreground italic">Add text...</span>}
                       </p>
                     )}
-                    <div onClick={(e) => e.stopPropagation()}>
-                      <select
-                        className="w-full h-5 bg-muted text-[10px] border rounded px-1 cursor-pointer outline-none"
-                        value={roundedDur}
-                        onChange={(e) => {
-                          const newDur = parseFloat(e.target.value);
-                          updateSegment({
-                            segmentId: segment.id,
-                            videoId: segment.video_id,
-                            startSeconds: segment.start_seconds,
-                            endSeconds: segment.start_seconds + newDur,
-                          });
+                    <div className="flex gap-0.5 text-[9px]" onClick={(e) => e.stopPropagation()}>
+                      <SegTimeInput
+                        value={Math.round((segment.end_seconds - segment.start_seconds) * 10) / 10}
+                        max={Math.round(((segment.video.duration_seconds ?? 999) - segment.start_seconds) * 10) / 10}
+                        title="Duration (s)"
+                        onCommit={(v) => {
+                          if (v > 0) {
+                            const maxEnd = segment.video.duration_seconds ?? 999;
+                            const newEnd = Math.min(segment.start_seconds + v, maxEnd);
+                            updateSegment({
+                              segmentId: segment.id,
+                              videoId: segment.video_id,
+                              startSeconds: segment.start_seconds,
+                              endSeconds: Math.round(newEnd * 10) / 10,
+                            });
+                          }
+                        }}
+                        suffix="s"
+                      />
+                    </div>
+                    {/* Slip & find best */}
+                    <div className="flex gap-0.5" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-muted-foreground hover:bg-muted transition-colors disabled:opacity-30"
+                        title="Slip earlier"
+                        disabled={segment.start_seconds <= 0}
+                        onClick={() => {
+                          const shift = Math.min(0.5, segment.start_seconds);
+                          if (shift > 0) {
+                            updateSegment({
+                              segmentId: segment.id,
+                              videoId: segment.video_id,
+                              startSeconds: Math.round((segment.start_seconds - shift) * 10) / 10,
+                              endSeconds: Math.round((segment.end_seconds - shift) * 10) / 10,
+                            });
+                          }
                         }}
                       >
-                        {durOptions.map((d) => (
-                          <option key={d} value={d}>
-                            {d}s
-                          </option>
-                        ))}
-                      </select>
+                        <CaretLeft className="h-2.5 w-2.5" />
+                      </button>
+                      <button
+                        className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-primary hover:bg-muted transition-colors"
+                        title="AI: find best moment"
+                        disabled={findingBestSegId === segment.id}
+                        onClick={() => handleFindBest(segment)}
+                      >
+                        {findingBestSegId === segment.id ? (
+                          <CircleNotch className="h-2.5 w-2.5 animate-spin" />
+                        ) : (
+                          <Sparkle className="h-2.5 w-2.5" />
+                        )}
+                      </button>
+                      <button
+                        className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-muted-foreground hover:bg-muted transition-colors disabled:opacity-30"
+                        title="Slip later"
+                        disabled={segment.end_seconds >= (segment.video.duration_seconds ?? 999)}
+                        onClick={() => {
+                          const maxEnd = segment.video.duration_seconds ?? 999;
+                          const shift = Math.min(0.5, maxEnd - segment.end_seconds);
+                          if (shift > 0) {
+                            updateSegment({
+                              segmentId: segment.id,
+                              videoId: segment.video_id,
+                              startSeconds: Math.round((segment.start_seconds + shift) * 10) / 10,
+                              endSeconds: Math.round((segment.end_seconds + shift) * 10) / 10,
+                            });
+                          }
+                        }}
+                      >
+                        <CaretRight className="h-2.5 w-2.5" />
+                      </button>
                     </div>
                     <div className="flex gap-1">
                       <button
@@ -1237,7 +1411,15 @@ export default function ReelBuilderPage() {
             <div className="space-y-2">
               <Label>Select Video</Label>
               <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">
-                {videos.map((v: Video) => (
+                {(() => {
+                  const usedVideoIds = new Set(
+                    segments
+                      .filter((s) => s.id !== swapSegment?.id)
+                      .map((s) => s.video_id)
+                  );
+                  return videos
+                    .filter((v: Video) => !usedVideoIds.has(v.id))
+                    .map((v: Video) => (
                   <div
                     key={v.id}
                     className={`relative rounded-lg border overflow-hidden cursor-pointer transition-colors ${
@@ -1247,12 +1429,6 @@ export default function ReelBuilderPage() {
                     }`}
                     onClick={() => {
                       setSwapVideoId(v.id);
-                      setSwapStart("0");
-                      setSwapEnd(
-                        v.duration_seconds
-                          ? Math.min(5, v.duration_seconds).toString()
-                          : "5"
-                      );
                     }}
                   >
                     <VideoThumbnail
@@ -1267,48 +1443,36 @@ export default function ReelBuilderPage() {
                       </p>
                     </div>
                   </div>
-                ))}
+                    ));
+                })()}
               </div>
             </div>
 
-            {/* Time range */}
-            {selectedSwapVideo && (
-              <div className="space-y-2">
-                <Label>Time Range</Label>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1">
-                    <Input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max={selectedSwapVideo.duration_seconds ?? 999}
-                      value={swapStart}
-                      onChange={(e) => setSwapStart(e.target.value)}
-                      placeholder="Start"
-                    />
-                    <p className="text-xs text-muted-foreground mt-0.5">Start (s)</p>
-                  </div>
-                  <span className="text-muted-foreground">–</span>
-                  <div className="flex-1">
-                    <Input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max={selectedSwapVideo.duration_seconds ?? 999}
-                      value={swapEnd}
-                      onChange={(e) => setSwapEnd(e.target.value)}
-                      placeholder="End"
-                    />
-                    <p className="text-xs text-muted-foreground mt-0.5">End (s)</p>
-                  </div>
-                </div>
-                {selectedSwapVideo.duration_seconds && (
-                  <p className="text-xs text-muted-foreground">
-                    Video duration: {selectedSwapVideo.duration_seconds.toFixed(1)}s
-                  </p>
+            {/* Segment duration + suggest */}
+            <div className="flex items-center justify-between">
+              {swapSegment && (
+                <p className="text-xs text-muted-foreground">
+                  Segment duration: {Math.round((swapSegment.end_seconds - swapSegment.start_seconds) * 10) / 10}s
+                </p>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                disabled={swapSuggesting}
+                onClick={handleSuggestSwap}
+              >
+                {swapSuggesting ? (
+                  <>
+                    <CircleNotch className="h-3.5 w-3.5 mr-1 animate-spin" /> Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Sparkle className="h-3.5 w-3.5 mr-1" /> Suggest
+                  </>
                 )}
-              </div>
-            )}
+              </Button>
+            </div>
 
             <Button
               className="w-full"
@@ -1384,6 +1548,64 @@ export default function ReelBuilderPage() {
           }
         }}
       />
+    </div>
+  );
+}
+
+function SegTimeInput({
+  value,
+  max,
+  title,
+  onCommit,
+  suffix,
+}: {
+  value: number;
+  max: number;
+  title: string;
+  onCommit: (v: number) => void;
+  suffix?: string;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setDraft(String(value));
+  }, [value, focused]);
+
+  const commit = () => {
+    const n = parseFloat(draft);
+    if (!isNaN(n) && n >= 0 && n <= max) {
+      onCommit(Math.round(n * 10) / 10);
+    } else {
+      setDraft(String(value));
+    }
+  };
+
+  return (
+    <div className="relative w-full">
+      <input
+        type="text"
+        inputMode="decimal"
+        className="w-full h-5 bg-muted border rounded px-1 text-[9px] text-center outline-none"
+        title={title}
+        value={draft}
+        onFocus={() => setFocused(true)}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          setFocused(false);
+          commit();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.currentTarget.blur();
+          }
+        }}
+      />
+      {suffix && (
+        <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[8px] text-muted-foreground pointer-events-none">
+          {suffix}
+        </span>
+      )}
     </div>
   );
 }

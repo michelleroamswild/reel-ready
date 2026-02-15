@@ -120,6 +120,14 @@ Deno.serve(async (req) => {
       )
       .join("\n\n");
 
+    // Build a list of exact durations for the prompt
+    const durationList = tmpl.segments
+      .map(
+        (s) =>
+          `Segment ${s.index + 1}: EXACTLY ${s.durationSeconds.toFixed(1)}s (endSeconds - startSeconds MUST equal ${s.durationSeconds.toFixed(1)})`
+      )
+      .join("\n");
+
     const prompt = `You are a creative director recreating a reel's structure using a different video library. The original reel has been analyzed into a template — your job is to pick the best matching clip from the user's library for each segment.
 
 ORIGINAL REEL TEMPLATE:
@@ -133,21 +141,23 @@ ORIGINAL REEL TEMPLATE:
 SEGMENT BREAKDOWN:
 ${segmentDescriptions}
 
+REQUIRED DURATIONS (THIS IS THE MOST IMPORTANT RULE):
+${durationList}
+
 AVAILABLE USER VIDEOS (${analyzedVideos.length} total):
 ${videoDescriptions}
 
 YOUR TASK:
 For each template segment, pick the best matching video clip from the user's library.
 
-CRITICAL RULES:
-1. Create exactly ${tmpl.segmentCount} segments
-2. Each segment's duration should closely match the template segment's duration
-3. Match mood and energy of each segment to the template
-4. MAXIMIZE VARIETY — use as many different videos as possible. Never repeat a video unless you have more segments than videos.
-5. Pick the most visually interesting portion of each video. Don't always start at 0s.
-6. Each segment must be at least 1 second long
-7. startSeconds and endSeconds must be within the video's actual duration
-8. sectionText should be the text overlay from the template segment (or empty string if none)
+CRITICAL RULES — IN ORDER OF PRIORITY:
+1. DURATION IS KING: Each segment's duration (endSeconds - startSeconds) MUST match the template segment's duration EXACTLY. This is the most important rule. For example, if the template says 3.5s, your clip MUST be 3.5s (e.g., startSeconds: 2.0, endSeconds: 5.5).
+2. Create exactly ${tmpl.segmentCount} segments
+3. startSeconds and endSeconds must be within the video's actual duration
+4. Match mood and energy of each segment to the template
+5. MAXIMIZE VARIETY — use as many different videos as possible. Never repeat a video unless you have more segments than videos.
+6. Pick the most visually interesting portion of each video. Don't always start at 0s.
+7. sectionText should be the text overlay from the template segment (or empty string if none)
 
 Respond with a JSON array in this exact format:
 [
@@ -202,16 +212,34 @@ Return one entry per segment, in order. Only return the JSON array.`;
       }
     }
 
-    // Validate and clamp timestamps
-    for (const seg of segments) {
-      const dur = durationMap.get(seg.videoId);
-      if (dur != null) {
-        seg.startSeconds = Math.max(0, Math.min(seg.startSeconds, dur));
-        seg.endSeconds = Math.max(
-          seg.startSeconds + 0.5,
-          Math.min(seg.endSeconds, dur)
-        );
+    // Enforce template durations and clamp to video bounds
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      const videoDur = durationMap.get(seg.videoId);
+      const templateSeg = tmpl.segments[i];
+      const targetDur = templateSeg?.durationSeconds ?? (seg.endSeconds - seg.startSeconds);
+
+      // Clamp start to video bounds
+      seg.startSeconds = Math.max(0, seg.startSeconds);
+      if (videoDur != null) {
+        seg.startSeconds = Math.min(seg.startSeconds, Math.max(0, videoDur - targetDur));
       }
+
+      // Set end to match template duration exactly
+      seg.endSeconds = seg.startSeconds + targetDur;
+
+      // Clamp end to video duration
+      if (videoDur != null && seg.endSeconds > videoDur) {
+        seg.endSeconds = videoDur;
+        // Shift start back to maintain duration
+        seg.startSeconds = Math.max(0, seg.endSeconds - targetDur);
+      }
+
+      // Ensure minimum duration
+      if (seg.endSeconds - seg.startSeconds < 0.5) {
+        seg.endSeconds = seg.startSeconds + Math.max(0.5, targetDur);
+      }
+
       seg.startSeconds = Math.round(seg.startSeconds * 10) / 10;
       seg.endSeconds = Math.round(seg.endSeconds * 10) / 10;
     }
