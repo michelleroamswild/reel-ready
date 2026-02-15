@@ -20,6 +20,7 @@ async function fetchReels(): Promise<ReelWithDetails[]> {
       )
     `
     )
+    .is("trial_batch_id", null)
     .order("created_at", { ascending: false });
 
   if (error) throw error;

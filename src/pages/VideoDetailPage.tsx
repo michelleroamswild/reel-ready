@@ -15,7 +15,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { SuggestTextDialog } from "@/components/SuggestTextDialog";
-import { ArrowLeft, Trash, ArrowsClockwise, Sparkle, ArrowClockwise, ChatText, PencilSimple, FilmStrip, VideoCamera } from "@phosphor-icons/react";
+import { ArrowLeft, Trash, ArrowsClockwise, Sparkle, ArrowClockwise, ChatText, PencilSimple, FilmStrip, VideoCamera, Flask } from "@phosphor-icons/react";
+import { useGenerateTrialReelsFromVideo } from "@/hooks/use-trial-reels";
 import { useState } from "react";
 
 export default function VideoDetailPage() {
@@ -24,8 +25,10 @@ export default function VideoDetailPage() {
   const { videos, isLoading, analyzeVideo, isAnalyzing, deleteVideo, updateVideo } = useVideos();
   const { addPhrase } = usePhrases();
   const { createQuickReel } = useReels();
+  const generateTrialReels = useGenerateTrialReelsFromVideo();
   const [showDelete, setShowDelete] = useState(false);
   const [showSuggestText, setShowSuggestText] = useState(false);
+  const [showTrialConfirm, setShowTrialConfirm] = useState(false);
   const [editingFilename, setEditingFilename] = useState(false);
   const [filenameDraft, setFilenameDraft] = useState("");
 
@@ -81,13 +84,24 @@ export default function VideoDetailPage() {
             {isAnalyzing ? "Analyzing..." : a ? "Re-analyze" : "Analyze"}
           </Button>
           {a && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowSuggestText(true)}
-            >
-              <ChatText className="h-4 w-4 mr-1" /> Suggest Text
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowSuggestText(true)}
+              >
+                <ChatText className="h-4 w-4 mr-1" /> Suggest Text
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowTrialConfirm(true)}
+                disabled={generateTrialReels.isPending}
+              >
+                <Flask className="h-4 w-4 mr-1" />
+                {generateTrialReels.isPending ? "Generating..." : "Trial Reels"}
+              </Button>
+            </>
           )}
           <Button
             variant="outline"
@@ -325,6 +339,39 @@ export default function VideoDetailPage() {
               }}
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showTrialConfirm} onOpenChange={setShowTrialConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Generate Trial Reels</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will create a base reel from this video and generate 3-5
+              variants, each isolating one variable — text, visuals, or
+              audio. AI will generate text overlays and multiple angles
+              like bold claims, questions, and emotional hooks.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                setShowTrialConfirm(false);
+                try {
+                  const batchId = await generateTrialReels.mutateAsync({
+                    video,
+                    allVideos: videos,
+                  });
+                  navigate(`/trials/${batchId}`);
+                } catch (err) {
+                  console.error("Failed to generate trial reels:", err);
+                }
+              }}
+            >
+              <Flask className="h-4 w-4 mr-1" /> Generate Variants
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -39,6 +39,9 @@ export interface Reel {
   text_border_color: string;
   burn_text: boolean;
   saved_captions: SavedCaption[];
+  trial_batch_id: string | null;
+  trial_variant_type: string | null;
+  trial_variant_label: string | null;
   created_at: string;
   updated_at: string;
 }

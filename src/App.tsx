@@ -9,6 +9,7 @@ import PhrasesPage from "@/pages/PhrasesPage";
 import VideosPage from "@/pages/VideosPage";
 import ReelsPage from "@/pages/ReelsPage";
 import ReelBuilderPage from "@/pages/ReelBuilderPage";
+import TrialBatchPage from "@/pages/TrialBatchPage";
 import VideoDetailPage from "@/pages/VideoDetailPage";
 import NotFound from "./pages/NotFound";
 
@@ -31,6 +32,11 @@ const App = () => (
                 <Route path="/reels/:id" element={
                   <main className="mx-auto max-w-6xl px-4 pt-4 pb-20">
                     <ReelBuilderPage />
+                  </main>
+                } />
+                <Route path="/trials/:batchId" element={
+                  <main className="mx-auto max-w-6xl px-4 pt-4 pb-20">
+                    <TrialBatchPage />
                   </main>
                 } />
                 <Route path="*" element={
