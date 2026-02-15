@@ -1,14 +1,15 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useVideos } from "@/hooks/use-videos";
+import { UploadCancelledError } from "@/lib/storage";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,7 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { FilmStrip, UploadSimple, CaretDown, FileVideo, CopySimple, Trash, ArrowsClockwise, Sparkle, ArrowClockwise, Faders } from "@phosphor-icons/react";
+import { FilmStrip, UploadSimple, Trash, ArrowsClockwise, Sparkle, ArrowClockwise, Faders, VideoCamera, X, CheckCircle } from "@phosphor-icons/react";
 import { VideoThumbnail } from "@/components/VideoThumbnail";
 import { VideoFilterSheet, emptyFilters, type VideoFilters } from "@/components/VideoFilterSheet";
 import type { Video } from "@/types/video";
@@ -29,27 +30,47 @@ interface UploadProgress {
   percent: number;
 }
 
+interface UploadComplete {
+  filename: string;
+  count: number;
+}
+
 export default function VideosPage() {
   const navigate = useNavigate();
   const { videos, isLoading, uploadVideo, isUploading, analyzeVideo, isAnalyzing, deleteVideo } = useVideos();
-  const singleInputRef = useRef<HTMLInputElement>(null);
-  const bulkInputRef = useRef<HTMLInputElement>(null);
   const [bulkProgress, setBulkProgress] = useState<UploadProgress[]>([]);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadFilename, setUploadFilename] = useState<string | null>(null);
+  const [uploadComplete, setUploadComplete] = useState<UploadComplete | null>(null);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [deleteVideo_, setDeleteVideo_] = useState<Video | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState<VideoFilters>(emptyFilters);
   const isBulkUploading = bulkProgress.length > 0;
 
+  // Upload dialog state
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploadType, setUploadType] = useState<"clip" | "edit">("clip");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Cancel support
+  const abortRef = useRef<AbortController | null>(null);
+  const cancelledRef = useRef(false);
+
+  // Auto-dismiss completion banner after 30s
+  const completeTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    return () => {
+      if (completeTimerRef.current) clearTimeout(completeTimerRef.current);
+    };
+  }, []);
+
   const activeFilterCount = Object.values(filters).reduce((sum, arr) => sum + arr.length, 0);
 
   const filteredVideos = useMemo(() => {
     return videos.filter((v: Video) => {
-      // Type filter
       if (filters.type.length > 0 && !filters.type.includes(v.video_type)) return false;
-
-      // Analysis-based filters — videos without analysis pass when these filters are inactive
       if (!v.analysis) {
         return filters.mood.length === 0 &&
           filters.energy.length === 0 &&
@@ -57,7 +78,6 @@ export default function VideosPage() {
           filters.tags.length === 0 &&
           filters.shotTypes.length === 0;
       }
-
       if (filters.mood.length > 0 && !filters.mood.includes(v.analysis.mood?.toLowerCase())) return false;
       if (filters.energy.length > 0 && !filters.energy.includes(v.analysis.energy?.toLowerCase())) return false;
       if (filters.pacing.length > 0 && !filters.pacing.includes(v.analysis.pacing?.toLowerCase())) return false;
@@ -69,56 +89,116 @@ export default function VideosPage() {
         const videoShots = (v.analysis.shotTypes ?? []).map((s) => s.toLowerCase());
         if (!filters.shotTypes.some((s) => videoShots.includes(s))) return false;
       }
-
       return true;
     });
   }, [videos, filters]);
 
-  const handleSingleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const uploading = isUploading || isBulkUploading;
 
-    try {
-      setUploadProgress(0);
-      await uploadVideo({ file, onProgress: setUploadProgress });
-    } catch (err) {
-      console.error("Upload failed:", err);
-    } finally {
-      setUploadProgress(null);
-      if (singleInputRef.current) singleInputRef.current.value = "";
-    }
+  const handleCancelUpload = () => {
+    cancelledRef.current = true;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setUploadProgress(null);
+    setUploadFilename(null);
+    setBulkProgress([]);
   };
 
-  const handleBulkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    if (files.length === 0) return;
+  const showComplete = (filename: string, count: number) => {
+    if (completeTimerRef.current) clearTimeout(completeTimerRef.current);
+    setUploadComplete({ filename, count });
+    completeTimerRef.current = setTimeout(() => setUploadComplete(null), 30000);
+  };
 
-    const progress: UploadProgress[] = files.map((f) => ({
-      filename: f.name,
-      percent: 0,
-    }));
-    setBulkProgress([...progress]);
+  const handleStartUpload = async () => {
+    if (selectedFiles.length === 0) return;
 
-    for (let i = 0; i < files.length; i++) {
+    const files = [...selectedFiles];
+    const savedType = uploadType;
+
+    // Close dialog immediately so progress shows on the main page
+    setShowUpload(false);
+    setSelectedFiles([]);
+    setUploadType("clip");
+
+    // Set up abort controller
+    const controller = new AbortController();
+    abortRef.current = controller;
+    cancelledRef.current = false;
+
+    if (files.length === 1) {
       try {
+        setUploadFilename(files[0].name);
+        setUploadProgress(0);
         await uploadVideo({
-          file: files[i],
-          onProgress: (percent) => {
-            progress[i] = { filename: files[i].name, percent };
-            setBulkProgress([...progress]);
-          },
+          file: files[0],
+          videoType: savedType,
+          onProgress: setUploadProgress,
+          signal: controller.signal,
         });
-        progress[i] = { filename: files[i].name, percent: 100 };
-        setBulkProgress([...progress]);
+        setUploadProgress(null);
+        setUploadFilename(null);
+        showComplete(files[0].name, 1);
       } catch (err) {
-        console.error(`Upload failed for ${files[i].name}:`, err);
-        progress[i] = { filename: files[i].name, percent: -1 };
-        setBulkProgress([...progress]);
+        if (err instanceof UploadCancelledError) {
+          // Cancelled — already cleaned up in handleCancelUpload
+        } else {
+          console.error("Upload failed:", err);
+        }
+        setUploadProgress(null);
+        setUploadFilename(null);
+      }
+    } else {
+      const progress: UploadProgress[] = files.map((f) => ({
+        filename: f.name,
+        percent: 0,
+      }));
+      setBulkProgress([...progress]);
+      let completed = 0;
+
+      for (let i = 0; i < files.length; i++) {
+        if (cancelledRef.current) break;
+
+        try {
+          await uploadVideo({
+            file: files[i],
+            videoType: savedType,
+            onProgress: (percent) => {
+              progress[i] = { filename: files[i].name, percent };
+              setBulkProgress([...progress]);
+            },
+            signal: controller.signal,
+          });
+          progress[i] = { filename: files[i].name, percent: 100 };
+          setBulkProgress([...progress]);
+          completed++;
+        } catch (err) {
+          if (err instanceof UploadCancelledError) break;
+          console.error(`Upload failed for ${files[i].name}:`, err);
+          progress[i] = { filename: files[i].name, percent: -1 };
+          setBulkProgress([...progress]);
+        }
+      }
+
+      setBulkProgress([]);
+      if (completed > 0 && !cancelledRef.current) {
+        showComplete(files[0].name, completed);
       }
     }
 
-    setBulkProgress([]);
-    if (bulkInputRef.current) bulkInputRef.current.value = "";
+    abortRef.current = null;
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length > 0) {
+      setSelectedFiles((prev) => [...prev, ...files]);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleAnalyze = (video: Video) => {
@@ -130,8 +210,6 @@ export default function VideosPage() {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
-
-  const uploading = isUploading || isBulkUploading;
 
   return (
     <div className="space-y-4">
@@ -152,47 +230,52 @@ export default function VideosPage() {
               </Badge>
             )}
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" disabled={uploading}>
-                <UploadSimple className="h-4 w-4 mr-1" />
-                Upload
-                <CaretDown className="h-3 w-3 ml-1" />
-              </Button>
-            </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => singleInputRef.current?.click()}>
-              <FileVideo className="h-4 w-4 mr-2" />
-              Single video
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => bulkInputRef.current?.click()}>
-              <CopySimple className="h-4 w-4 mr-2" />
-              Bulk upload
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <input
-          ref={singleInputRef}
-          type="file"
-          accept="video/*"
-          onChange={handleSingleUpload}
-          className="hidden"
-        />
-        <input
-          ref={bulkInputRef}
-          type="file"
-          accept="video/*"
-          multiple
-          onChange={handleBulkUpload}
-          className="hidden"
-        />
+          <Button size="sm" disabled={uploading} onClick={() => setShowUpload(true)}>
+            <UploadSimple className="h-4 w-4 mr-1" />
+            Upload
+          </Button>
         </div>
       </div>
+
+      {/* Upload complete banner */}
+      {uploadComplete && (
+        <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="h-5 w-5 text-green-500" weight="fill" />
+            <p className="text-sm font-medium text-green-700 dark:text-green-400">
+              {uploadComplete.count === 1
+                ? `${uploadComplete.filename} uploaded successfully`
+                : `${uploadComplete.count} videos uploaded successfully`}
+            </p>
+          </div>
+          <button
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => {
+              setUploadComplete(null);
+              if (completeTimerRef.current) clearTimeout(completeTimerRef.current);
+            }}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Single upload progress */}
       {isUploading && uploadProgress !== null && !isBulkUploading && (
         <div className="rounded-lg border bg-card p-3 space-y-2">
-          <p className="text-sm font-medium">Uploading...</p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium truncate">
+              Uploading{uploadFilename ? ` ${uploadFilename}` : ""}...
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
+              onClick={handleCancelUpload}
+            >
+              Cancel
+            </Button>
+          </div>
           <div className="h-2 rounded-full bg-muted overflow-hidden">
             <div
               className="h-full bg-primary transition-all duration-300"
@@ -206,10 +289,20 @@ export default function VideosPage() {
       {/* Bulk upload progress */}
       {isBulkUploading && (
         <div className="rounded-lg border bg-card p-3 space-y-3">
-          <p className="text-sm font-medium">
-            Uploading {bulkProgress.filter((p) => p.percent === 100).length} of{" "}
-            {bulkProgress.length} videos...
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">
+              Uploading {bulkProgress.filter((p) => p.percent === 100).length} of{" "}
+              {bulkProgress.length} videos...
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
+              onClick={handleCancelUpload}
+            >
+              Cancel
+            </Button>
+          </div>
           {bulkProgress.map((p, i) => (
             <div key={i} className="space-y-1">
               <div className="flex items-center justify-between">
@@ -321,6 +414,102 @@ export default function VideosPage() {
         onFiltersChange={setFilters}
         videos={videos}
       />
+
+      {/* Upload Dialog */}
+      <Dialog
+        open={showUpload}
+        onOpenChange={(open) => {
+          if (!open && !uploading) {
+            setShowUpload(false);
+            setSelectedFiles([]);
+            setUploadType("clip");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Upload Videos</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Clip / Edit toggle */}
+            <div>
+              <p className="text-sm font-medium mb-2">Video type</p>
+              <div className="flex rounded-md overflow-hidden border w-fit">
+                {(["clip", "edit"] as const).map((type) => {
+                  const isActive = uploadType === type;
+                  return (
+                    <button
+                      key={type}
+                      className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors ${
+                        isActive
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-transparent text-muted-foreground hover:text-foreground"
+                      }`}
+                      onClick={() => setUploadType(type)}
+                    >
+                      {type === "clip" ? <VideoCamera className="h-3.5 w-3.5" /> : <FilmStrip className="h-3.5 w-3.5" />}
+                      {type === "clip" ? "Clip" : "Edit"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Drop zone / file picker */}
+            <div
+              className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <UploadSimple className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                Click to browse or drag files here
+              </p>
+              <p className="text-xs text-muted-foreground/70 mt-1">
+                Accepts video files
+              </p>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/*"
+              multiple
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+
+            {/* Selected files list */}
+            {selectedFiles.length > 0 && (
+              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                {selectedFiles.map((file, i) => (
+                  <div
+                    key={`${file.name}-${i}`}
+                    className="flex items-center justify-between rounded-md border px-2.5 py-1.5 text-sm"
+                  >
+                    <span className="truncate mr-2">{file.name}</span>
+                    <button
+                      className="shrink-0 text-muted-foreground hover:text-foreground"
+                      onClick={() => removeFile(i)}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Upload action */}
+            <Button
+              className="w-full"
+              disabled={selectedFiles.length === 0 || uploading}
+              onClick={handleStartUpload}
+            >
+              <UploadSimple className="h-4 w-4 mr-1" />
+              Upload {selectedFiles.length > 0 ? `${selectedFiles.length} file${selectedFiles.length > 1 ? "s" : ""}` : ""}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={deleteVideo_ !== null} onOpenChange={(open) => !open && setDeleteVideo_(null)}>
         <AlertDialogContent>
