@@ -15,17 +15,19 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { SuggestTextDialog } from "@/components/SuggestTextDialog";
-import { ArrowLeft, Trash, ArrowsClockwise, Sparkle, ArrowClockwise, ChatText } from "@phosphor-icons/react";
+import { ArrowLeft, Trash, ArrowsClockwise, Sparkle, ArrowClockwise, ChatText, PencilSimple, FilmStrip, VideoCamera } from "@phosphor-icons/react";
 import { useState } from "react";
 
 export default function VideoDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { videos, isLoading, analyzeVideo, isAnalyzing, deleteVideo } = useVideos();
+  const { videos, isLoading, analyzeVideo, isAnalyzing, deleteVideo, updateVideo } = useVideos();
   const { addPhrase } = usePhrases();
   const { createQuickReel } = useReels();
   const [showDelete, setShowDelete] = useState(false);
   const [showSuggestText, setShowSuggestText] = useState(false);
+  const [editingFilename, setEditingFilename] = useState(false);
+  const [filenameDraft, setFilenameDraft] = useState("");
 
   const video = videos.find((v) => v.id === id);
 
@@ -106,11 +108,63 @@ export default function VideoDetailPage() {
             controls
             playsInline
             preload="metadata"
+            poster={video.thumbnail_url ?? undefined}
             className="w-full rounded-lg border bg-black aspect-[9/16] object-contain"
           />
-          <div className="space-y-1">
-            <h1 className="text-base font-semibold truncate">{video.filename}</h1>
+          <div className="space-y-2">
+            {/* Editable filename */}
+            {editingFilename ? (
+              <input
+                autoFocus
+                className="text-base font-semibold bg-transparent border-b border-primary outline-none w-full"
+                value={filenameDraft}
+                onChange={(e) => setFilenameDraft(e.target.value)}
+                onBlur={() => {
+                  const trimmed = filenameDraft.trim();
+                  if (trimmed && trimmed !== video.filename) {
+                    updateVideo({ id: video.id, updates: { filename: trimmed } });
+                  }
+                  setEditingFilename(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                  if (e.key === "Escape") setEditingFilename(false);
+                }}
+              />
+            ) : (
+              <div
+                className="flex items-center gap-1 cursor-pointer group/name"
+                onClick={() => { setFilenameDraft(video.filename); setEditingFilename(true); }}
+              >
+                <h1 className="text-base font-semibold truncate">{video.filename}</h1>
+                <PencilSimple className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 group-hover/name:opacity-100 transition-opacity" />
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
+              {/* Clip / Edit toggle */}
+              <div className="flex rounded-md overflow-hidden border">
+                {(["clip", "edit"] as const).map((type) => {
+                  const isActive = (video.video_type || "clip") === type;
+                  return (
+                    <button
+                      key={type}
+                      className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium transition-colors ${
+                        isActive
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-transparent text-muted-foreground hover:text-foreground"
+                      }`}
+                      onClick={() => {
+                        if (!isActive) {
+                          updateVideo({ id: video.id, updates: { video_type: type } });
+                        }
+                      }}
+                    >
+                      {type === "clip" ? <VideoCamera className="h-3 w-3" /> : <FilmStrip className="h-3 w-3" />}
+                      {type === "clip" ? "Clip" : "Edit"}
+                    </button>
+                  );
+                })}
+              </div>
               <Badge variant="outline" className="text-xs">
                 {formatSize(video.size_bytes)}
               </Badge>
@@ -119,9 +173,6 @@ export default function VideoDetailPage() {
                   {video.duration_seconds.toFixed(1)}s
                 </Badge>
               )}
-              <Badge variant="outline" className="text-xs">
-                {video.mime_type}
-              </Badge>
             </div>
           </div>
         </div>

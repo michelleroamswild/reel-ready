@@ -26,5 +26,6 @@ export interface Video {
   mime_type: string;
   analysis: VideoAnalysis | null;
   thumbnail_url: string | null;
+  video_type: "clip" | "edit";
   created_at: string;
 }

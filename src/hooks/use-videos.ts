@@ -162,6 +162,17 @@ export function useVideos() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: VIDEOS_KEY }),
   });
 
+  const updateVideoMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<Pick<Video, "filename" | "video_type">> }) => {
+      const { error } = await supabase
+        .from("videos")
+        .update(updates)
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: VIDEOS_KEY }),
+  });
+
   return {
     videos,
     isLoading,
@@ -171,5 +182,6 @@ export function useVideos() {
     isAnalyzing: analyzeMutation.isPending,
     deleteVideo: (id: string) => deleteMutation.mutate(id),
     generateThumbnail: (video: Video) => thumbnailMutation.mutate(video),
+    updateVideo: updateVideoMutation.mutate,
   };
 }

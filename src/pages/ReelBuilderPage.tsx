@@ -269,6 +269,7 @@ export default function ReelBuilderPage() {
                   }`}
                   playsInline
                   preload={i === currentIndex ? "auto" : "metadata"}
+                  poster={seg.video.thumbnail_url ?? undefined}
                   onTimeUpdate={() => handleTimeUpdate(i)}
                 />
               ))
@@ -783,10 +784,11 @@ export default function ReelBuilderPage() {
                       );
                     }}
                   >
-                    <video
+                    <VideoThumbnail
                       src={v.url}
-                      preload="metadata"
-                      className="w-full aspect-[9/16] object-cover"
+                      thumbnailUrl={v.thumbnail_url}
+                      className="w-full aspect-[9/16]"
+                      iconSize="sm"
                     />
                     <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-1 pb-0.5 pt-3">
                       <p className="text-[9px] text-white truncate">
