@@ -30,6 +30,25 @@ interface VideoInput {
   analysis: VideoAnalysis | null;
 }
 
+interface TrendingAudioInput {
+  title: string;
+  artist: string | null;
+  genre: string | null;
+  mood: string | null;
+  usage_count: number | null;
+}
+
+interface ReferencePatterns {
+  hookStyle: string;
+  avgDuration: number;
+  pacingNotes: string;
+  textStyle: string;
+  commonMoods: string[];
+  structureNotes: string;
+  audioNotes: string;
+  summary: string;
+}
+
 interface SegmentInput {
   section_text: string;
   video_id: string;
@@ -51,10 +70,13 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { baseReel, videos, generateText } = (await req.json()) as {
+    const { baseReel, videos, generateText, trendingAudio, referencePatterns, singleVariantType } = (await req.json()) as {
       baseReel: BaseReel;
       videos: VideoInput[];
       generateText?: boolean;
+      trendingAudio?: TrendingAudioInput[];
+      referencePatterns?: ReferencePatterns;
+      singleVariantType?: "text" | "visual" | "audio";
     };
 
     if (!baseReel?.segments?.length || !videos?.length) {
@@ -125,7 +147,71 @@ Deno.serve(async (req) => {
 
     const baseTextLine = needsText ? "" : `Phrase text: "${baseReel.phraseText}"`;
 
-    const prompt = `You are a creative director helping A/B test short-form social media reels. Given a base reel and a pool of videos, generate variant reels that each isolate ONE variable. The goal is to learn what drives engagement.${textGenBlock}
+    // Build trending audio section if provided
+    let trendingAudioBlock = "";
+    if (trendingAudio && trendingAudio.length > 0) {
+      const trackLines = trendingAudio
+        .map((t, i) => {
+          let line = `${i + 1}. "${t.title}"`;
+          if (t.artist) line += ` by ${t.artist}`;
+          if (t.genre) line += ` (${t.genre})`;
+          if (t.mood) line += ` — mood: ${t.mood}`;
+          if (t.usage_count) line += ` — ${t.usage_count.toLocaleString()} uses`;
+          return line;
+        })
+        .join("\n");
+      trendingAudioBlock = `\n\nTRENDING AUDIO (current trending tracks on TikTok):\n${trackLines}\n\nFor audio variants: Reference a specific trending track from the list above when possible. Include the track title and artist in audioSuggestion.`;
+    }
+
+    // Build reference patterns section if provided
+    let referencePatternsBlock = "";
+    if (referencePatterns) {
+      referencePatternsBlock = `\n\nREFERENCE REEL PATTERNS (extracted from trending reels the user analyzed):
+Hook style: ${referencePatterns.hookStyle}
+Pacing: ${referencePatterns.pacingNotes}
+Text style: ${referencePatterns.textStyle}
+Structure: ${referencePatterns.structureNotes}
+Audio: ${referencePatterns.audioNotes}
+Common moods: ${referencePatterns.commonMoods.join(", ")}
+
+Use these patterns to guide your variants. Text variants should mirror the text style. Visual variants should follow the pacing and structure patterns. Audio variants should reference the audio patterns.`;
+    }
+
+    // Build variant instructions based on whether we're regenerating a single variant or generating all
+    let variantInstructions: string;
+    let countInstructions: string;
+
+    if (singleVariantType === "text") {
+      variantInstructions = `**"text" variant** — Change ONLY the text overlay. Keep the EXACT same videos, timestamps, segment order, and durations. Rewrite the sectionText on every segment to take a different angle. Pick ONE fresh approach from:
+  - **Bold claim**: A confident, declarative statement
+  - **Question**: Hook with a question that creates curiosity
+  - **Emotional**: Tap into feelings — nostalgia, longing, pride, joy
+  - **Curiosity / watch this**: Tease or challenge the viewer to keep watching
+  - **Relatable / POV**: Frame it as a shared experience`;
+      countInstructions = "Generate EXACTLY 1 text variant with a fresh, different angle from the base text.";
+    } else if (singleVariantType === "visual") {
+      variantInstructions = `**"visual" variant** — Change ONLY the visuals. Keep the SAME text on every segment (use base text${needsText ? " you generated" : ""}). Change which videos are used, their timestamps, segment order, or pacing (cut lengths). Pick different clips from the pool, try a different opening shot, reorder for impact, or change segment durations.`;
+      countInstructions = "Generate EXACTLY 1 visual variant.";
+    } else if (singleVariantType === "audio") {
+      variantInstructions = `**"audio" variant** — Keep the SAME text AND the SAME visuals/timestamps as the base reel. This variant flags that the user should try different background audio. Include an "audioSuggestion" field describing what audio style/track to try (e.g., "Trending lo-fi beat", "Upbeat pop instrumental", "Cinematic bass drop for the hook").`;
+      countInstructions = "Generate EXACTLY 1 audio variant with a fresh audio suggestion different from any previous suggestion.";
+    } else {
+      variantInstructions = `VARIANT TYPES — each variant changes EXACTLY ONE variable:
+
+**"text" variants** — Change ONLY the text overlay. Keep the EXACT same videos, timestamps, segment order, and durations. Rewrite the sectionText on every segment to take a different angle. You MUST generate at least 3 text variants from these approaches (pick the ones that fit the content best):
+  - **Bold claim**: A confident, declarative statement ("This changes everything", "The secret nobody talks about")
+  - **Question**: Hook with a question that creates curiosity ("What if you could...?", "Ever wonder why...?")
+  - **Emotional**: Tap into feelings — nostalgia, longing, pride, joy ("The moment it all clicked", "This feeling never gets old")
+  - **Curiosity / watch this**: Tease or challenge the viewer to keep watching ("Wait for it", "Watch what happens next", "You won't believe this")
+  - **Relatable / POV**: Frame it as a shared experience ("POV: you finally...", "That moment when...")
+
+**"visual" variant** — Change ONLY the visuals. Keep the SAME text on every segment (use base text${needsText ? " you generated" : ""}). Change which videos are used, their timestamps, segment order, or pacing (cut lengths). Pick different clips from the pool, try a different opening shot, reorder for impact, or change segment durations. Maximum 1 visual variant.
+
+**"audio" variant** — Keep the SAME text AND the SAME visuals/timestamps as the base reel. This variant flags that the user should try different background audio. Include an "audioSuggestion" field describing what audio style/track to try (e.g., "Trending lo-fi beat", "Upbeat pop instrumental", "Cinematic bass drop for the hook"). Maximum 1 audio variant.`;
+      countInstructions = "DECIDE HOW MANY: Generate 3-5 variants total. You MUST include at least 3 text variants. Add a visual variant if the video pool has good alternative clips. Add an audio variant if the content would benefit from a different sound. Use your judgment — only include variants that would meaningfully test something different.";
+    }
+
+    const prompt = `You are a creative director helping A/B test short-form social media reels. Given a base reel and a pool of videos, generate variant reels that each isolate ONE variable. The goal is to learn what drives engagement.${textGenBlock}${trendingAudioBlock}${referencePatternsBlock}
 
 BASE REEL:
 Title: "${baseReel.title}"
@@ -137,23 +223,12 @@ ${baseSegmentDescriptions}
 AVAILABLE VIDEO POOL (${analyzedVideos.length} videos):
 ${videoDescriptions}
 
-VARIANT TYPES — each variant changes EXACTLY ONE variable:
+${variantInstructions}
 
-**"text" variants** — Change ONLY the text overlay. Keep the EXACT same videos, timestamps, segment order, and durations. Rewrite the sectionText on every segment to take a different angle. You MUST generate at least 3 text variants from these approaches (pick the ones that fit the content best):
-  - **Bold claim**: A confident, declarative statement ("This changes everything", "The secret nobody talks about")
-  - **Question**: Hook with a question that creates curiosity ("What if you could...?", "Ever wonder why...?")
-  - **Emotional**: Tap into feelings — nostalgia, longing, pride, joy ("The moment it all clicked", "This feeling never gets old")
-  - **Curiosity / watch this**: Tease or challenge the viewer to keep watching ("Wait for it", "Watch what happens next", "You won't believe this")
-  - **Relatable / POV**: Frame it as a shared experience ("POV: you finally...", "That moment when...")
-
-**"visual" variant** — Change ONLY the visuals. Keep the SAME text on every segment (use base text${needsText ? " you generated" : ""}). Change which videos are used, their timestamps, segment order, or pacing (cut lengths). Pick different clips from the pool, try a different opening shot, reorder for impact, or change segment durations. Maximum 1 visual variant.
-
-**"audio" variant** — Keep the SAME text AND the SAME visuals/timestamps as the base reel. This variant flags that the user should try different background audio. Include an "audioSuggestion" field describing what audio style/track to try (e.g., "Trending lo-fi beat", "Upbeat pop instrumental", "Cinematic bass drop for the hook"). Maximum 1 audio variant.
-
-DECIDE HOW MANY: Generate 3-5 variants total. You MUST include at least 3 text variants. Add a visual variant if the video pool has good alternative clips. Add an audio variant if the content would benefit from a different sound. Use your judgment — only include variants that would meaningfully test something different.
+${countInstructions}
 
 CRITICAL RULES:
-- variantType MUST be exactly "text", "visual", or "audio"
+- variantType MUST be exactly "${singleVariantType || "text\", \"visual\", or \"audio"}"
 - videoId MUST be an exact UUID from the video pool above (the value inside videoId="...")
 - startSeconds and endSeconds must be within each video's actual duration
 - Each segment must be at least 2 seconds long
@@ -166,7 +241,7 @@ Respond with JSON in this exact format:
 {${needsText ? '\n  "baseText": "<the generated base text overlay phrase>",' : ""}
   "variants": [
     {
-      "variantType": "text" | "visual" | "audio",
+      "variantType": "${singleVariantType || "text\" | \"visual\" | \"audio"}",
       "variantLabel": "<short descriptive label>",
       "targetDuration": <number>,
       "audioSuggestion": "<only for audio variants, omit otherwise>",

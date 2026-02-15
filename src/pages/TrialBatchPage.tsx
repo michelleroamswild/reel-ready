@@ -12,6 +12,9 @@ import {
   Export,
   CircleNotch,
   Flask,
+  CaretDown,
+  CaretUp,
+  Sparkle,
 } from "@phosphor-icons/react";
 
 export default function TrialBatchPage() {
@@ -26,6 +29,7 @@ export default function TrialBatchPage() {
   const [batchExportIndex, setBatchExportIndex] = useState(-1);
   const [batchExportTotal, setBatchExportTotal] = useState(0);
   const isBatchExporting = batchExportIndex >= 0;
+  const [showPatterns, setShowPatterns] = useState(false);
 
   const handleExportAll = useCallback(async () => {
     if (!batch?.reels.length) return;
@@ -142,6 +146,82 @@ export default function TrialBatchPage() {
           </span>
         </p>
       </div>
+
+      {/* Reference patterns */}
+      {batch.reference_patterns && (
+        <div className="rounded-lg border bg-muted/50 overflow-hidden">
+          <button
+            className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted transition-colors"
+            onClick={() => setShowPatterns(!showPatterns)}
+          >
+            <Sparkle className="h-4 w-4 text-primary shrink-0" />
+            <span className="text-xs font-medium flex-1">
+              Reference Patterns
+              {batch.reference_urls?.length
+                ? ` (${batch.reference_urls.length} reel${batch.reference_urls.length !== 1 ? "s" : ""})`
+                : ""}
+            </span>
+            {showPatterns ? (
+              <CaretUp className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <CaretDown className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
+          </button>
+          {showPatterns && (
+            <div className="px-3 pb-3 space-y-2 border-t">
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <div>
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                    Hook Style
+                  </p>
+                  <p className="text-xs">{batch.reference_patterns.hookStyle}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                    Text Style
+                  </p>
+                  <p className="text-xs">{batch.reference_patterns.textStyle}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                    Pacing
+                  </p>
+                  <p className="text-xs">{batch.reference_patterns.pacingNotes}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                    Structure
+                  </p>
+                  <p className="text-xs">{batch.reference_patterns.structureNotes}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                    Audio
+                  </p>
+                  <p className="text-xs">{batch.reference_patterns.audioNotes}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                    Moods
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {batch.reference_patterns.commonMoods.map((mood) => (
+                      <Badge key={mood} variant="secondary" className="text-[10px]">
+                        {mood}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {batch.reference_patterns.summary && (
+                <p className="text-xs text-muted-foreground italic pt-1">
+                  {batch.reference_patterns.summary}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Batch export progress */}
       {isBatchExporting && (
