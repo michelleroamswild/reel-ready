@@ -11,6 +11,7 @@ import ReelsPage from "@/pages/ReelsPage";
 import ReelBuilderPage from "@/pages/ReelBuilderPage";
 import TrialBatchPage from "@/pages/TrialBatchPage";
 import VideoDetailPage from "@/pages/VideoDetailPage";
+import TrendsPage from "@/pages/TrendsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -45,6 +46,7 @@ const App = () => (
                       <Route path="/" element={<ReelsPage />} />
                       <Route path="/phrases" element={<PhrasesPage />} />
                       <Route path="/videos" element={<VideosPage />} />
+                      <Route path="/trends" element={<TrendsPage />} />
                       <Route path="*" element={<NotFound />} />
                     </Routes>
                   </main>

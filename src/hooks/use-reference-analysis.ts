@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import type { ReelTemplate } from "@/types/reel";
 import type { ReferencePatterns } from "@/types/trial";
@@ -140,4 +141,27 @@ export function useReferenceAnalysis() {
       ? `${state.currentIndex + 1} of ${state.totalUrls}`
       : "",
   };
+}
+
+export interface ReferencePatternEntry {
+  id: string;
+  created_at: string;
+  reference_urls: string[] | null;
+  reference_patterns: ReferencePatterns;
+}
+
+export function useReferencePatternHistory() {
+  return useQuery({
+    queryKey: ["reference-pattern-history"],
+    queryFn: async (): Promise<ReferencePatternEntry[]> => {
+      const { data, error } = await supabase
+        .from("trial_batches")
+        .select("id, created_at, reference_urls, reference_patterns")
+        .not("reference_patterns", "is", null)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      return (data ?? []) as ReferencePatternEntry[];
+    },
+  });
 }

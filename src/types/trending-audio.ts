@@ -2,7 +2,8 @@ export interface TrendingAudio {
   id: string;
   title: string;
   artist: string | null;
-  platform: "tiktok" | "instagram";
+  platform: "tiktok" | "instagram" | "unknown";
+  source: "api" | "manual" | "ai_research" | "url_extract";
   usage_count: number | null;
   trend_rank: number | null;
   genre: string | null;

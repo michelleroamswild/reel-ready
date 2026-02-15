@@ -1,3 +1,5 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!;
 const GEMINI_GENERATE_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 const GEMINI_UPLOAD_URL = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${GEMINI_API_KEY}`;
@@ -8,52 +10,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const TEMPLATE_PROMPT = `You are analyzing a short-form social media video (TikTok/Instagram Reel) to extract its structure as a reusable template.
-
-IMPORTANT — IGNORE ALL PLATFORM UI:
-This is likely a screen recording or download from TikTok/Instagram/YouTube. You MUST completely ignore all platform elements:
-- EXCLUDE: "TikTok", "@username", any @mentions, hashtags (#), like/comment/share/bookmark buttons, follower counts, profile pictures, platform logos, "Original Sound" labels, caption text pinned to the bottom of the screen, and any other platform chrome.
-- For textOverlay fields, ONLY include text that the creator intentionally placed as part of their video content (styled text overlays, titles, storytelling captions that are part of the creative edit).
-- Platform captions, watermarks, and usernames are NOT text overlays — do not include them.
-
-Analyze the video carefully and identify:
-1. Every distinct visual segment/cut (when the background scene or clip changes)
-2. Any CREATOR text overlays and when they appear (NOT platform UI)
-3. The mood, energy, and visual style of each segment
-4. The overall pacing and structure
-
-Respond in this exact JSON format:
-{
-  "totalDurationSeconds": <number>,
-  "segmentCount": <number>,
-  "segments": [
-    {
-      "index": 0,
-      "startSeconds": <number>,
-      "endSeconds": <number>,
-      "durationSeconds": <number>,
-      "textOverlay": "<creator text visible in this segment, or null if none>",
-      "mood": "<mood of this specific segment>",
-      "energy": "<low|medium|high>",
-      "visualDescription": "<what is shown: camera angle, subject, movement>"
-    }
-  ],
-  "overallMood": "<overall mood of the reel>",
-  "overallEnergy": "<overall energy level>",
-  "overallPacing": "<slow|medium|fast|variable>",
-  "visualStyleNotes": "<general observations about visual style, transitions, color grading>",
-  "textOverlayStyle": "<how text is presented: font style, position, animation, or null if no text>"
-}
-
-Guidelines:
-- Be precise about cut points (to 0.1s accuracy)
-- Every frame of the video should belong to exactly one segment
-- A "cut" is when the visual content/clip changes (not just text changing)
-- If text appears or changes within the same visual scene, note the text but keep it as one segment
-- ONLY include creator text overlays — NEVER include TikTok watermarks, @usernames, hashtags, or platform captions
-- For energy: "low" = calm/slow, "medium" = moderate pace, "high" = fast/intense
-
-Only return the JSON, nothing else.`;
+const INLINE_MAX_BYTES = 20 * 1024 * 1024; // 20 MB
 
 function uint8ArrayToBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -64,8 +21,6 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
   }
   return btoa(binary);
 }
-
-const INLINE_MAX_BYTES = 20 * 1024 * 1024; // 20 MB
 
 async function uploadToGeminiFileApi(
   videoBytes: Uint8Array,
@@ -81,7 +36,7 @@ async function uploadToGeminiFileApi(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      file: { displayName: "reel-template-source" },
+      file: { displayName: "audio-extract-source" },
     }),
   });
 
@@ -124,43 +79,32 @@ async function uploadToGeminiFileApi(
   return fileUri;
 }
 
-/** Remove platform watermark / UI text from template results. */
-function stripPlatformText(obj: Record<string, unknown>) {
-  const STRIP_PATTERNS = [
-    /@[\w.]+/g,                      // @username
-    /#[\w]+/g,                       // #hashtag
-    /\bTikTok\b/gi,
-    /\bInstagram\b/gi,
-    /\bYouTube\s*Shorts?\b/gi,
-    /\bOriginal\s*Sound\b/gi,
-    /\bFYP\b/gi,
-    /\bFor\s*You\b/gi,
-  ];
+const AUDIO_PROMPT = `You are analyzing a short-form social media video (TikTok or Instagram Reel) to identify the background audio or music track.
 
-  function clean(str: string): string {
-    let out = str;
-    for (const p of STRIP_PATTERNS) {
-      out = out.replace(p, "");
-    }
-    return out.replace(/\s{2,}/g, " ").replace(/^\s*[,\-–—]\s*/, "").trim();
-  }
+Listen carefully to the audio in this video and identify:
+1. The song title (if it's a known song)
+2. The artist/creator
+3. The genre of the music
+4. The mood the audio conveys (one or two words)
+5. The energy level: "low", "medium", or "high"
+6. Approximate duration of the audio clip in seconds
+7. Whether this appears to be an original sound, a remix, or a known commercial track
 
-  function walk(val: unknown): unknown {
-    if (typeof val === "string") {
-      const cleaned = clean(val);
-      return cleaned.length === 0 ? null : cleaned;
-    }
-    if (Array.isArray(val)) return val.map(walk).filter((v) => v !== null && v !== "");
-    if (val && typeof val === "object") {
-      for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
-        (val as Record<string, unknown>)[k] = walk(v);
-      }
-    }
-    return val;
-  }
+If you cannot identify the exact song, provide your best description of the audio style as the title (e.g., "Upbeat Lo-Fi Beat", "Dramatic Piano Instrumental").
 
-  walk(obj);
+Return valid JSON in this exact format:
+{
+  "title": "song title or descriptive name",
+  "artist": "artist name or Unknown",
+  "genre": "genre",
+  "mood": "mood descriptor",
+  "energy": "low|medium|high",
+  "duration_seconds": null,
+  "is_original_sound": false,
+  "confidence": "high|medium|low"
 }
+
+Only return the JSON, nothing else.`;
 
 const BROWSER_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -178,12 +122,13 @@ async function resolveVideoBytes(
   });
 
   if (!res.ok) {
-    throw new Error(`Failed to download video: ${res.status}`);
+    throw new Error(
+      `Failed to download video (${res.status}). The post may be private or the URL may be invalid.`
+    );
   }
 
   const ct = res.headers.get("content-type") || "";
 
-  // Already a video — return directly
   if (ct.startsWith("video/")) {
     return {
       bytes: new Uint8Array(await res.arrayBuffer()),
@@ -191,11 +136,9 @@ async function resolveVideoBytes(
     };
   }
 
-  // HTML page — try to extract video URL from meta tags
   if (ct.startsWith("text/html") || ct.startsWith("application/xhtml")) {
     const html = await res.text();
 
-    // Try og:video and og:video:secure_url meta tags
     const ogMatch =
       html.match(
         /<meta[^>]+property=["']og:video(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i
@@ -204,7 +147,6 @@ async function resolveVideoBytes(
         /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:video(?::secure_url)?["']/i
       );
 
-    // Also try twitter:player:stream which some platforms use
     const twitterMatch =
       !ogMatch &&
       (html.match(
@@ -214,7 +156,6 @@ async function resolveVideoBytes(
           /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:player:stream["']/i
         ));
 
-    // Try to find video URL in embedded JSON data (TikTok pattern)
     let jsonVideoUrl: string | null = null;
     if (!ogMatch && !twitterMatch) {
       const scriptMatch = html.match(
@@ -223,14 +164,13 @@ async function resolveVideoBytes(
       if (scriptMatch) {
         try {
           const jsonData = JSON.parse(scriptMatch[1]);
-          // Navigate TikTok's data structure
           const detail =
             jsonData?.__DEFAULT_SCOPE__?.["webapp.video-detail"]?.itemInfo
               ?.itemStruct?.video;
           jsonVideoUrl =
             detail?.downloadAddr || detail?.playAddr || detail?.bitrateInfo?.[0]?.PlayAddr?.UrlList?.[0] || null;
         } catch {
-          // JSON parse failed, skip
+          // skip
         }
       }
     }
@@ -239,12 +179,8 @@ async function resolveVideoBytes(
       ogMatch?.[1] || (twitterMatch && twitterMatch[1]) || jsonVideoUrl;
 
     if (videoUrl) {
-      // Fetch the actual video
       const videoRes = await fetch(videoUrl, {
-        headers: {
-          "User-Agent": BROWSER_UA,
-          Referer: url,
-        },
+        headers: { "User-Agent": BROWSER_UA, Referer: url },
         redirect: "follow",
       });
 
@@ -272,7 +208,6 @@ async function resolveVideoBytes(
     );
   }
 
-  // Some other content type — try treating it as video
   return {
     bytes: new Uint8Array(await res.arrayBuffer()),
     mime: ct.split(";")[0].trim() || "video/mp4",
@@ -284,10 +219,14 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  try {
-    const { videoUrl, mimeType } = await req.json();
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    if (!videoUrl) {
+  try {
+    const { videoUrl } = await req.json();
+
+    if (!videoUrl || typeof videoUrl !== "string") {
       return new Response(
         JSON.stringify({ error: "videoUrl is required" }),
         {
@@ -297,34 +236,33 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { bytes: videoBytes, mime: resolvedMime } =
+    const { bytes: videoBytes, mime: mimeType } =
       await resolveVideoBytes(videoUrl);
-    const mime = mimeType || resolvedMime;
 
-    // Build the video part for Gemini
+    // Build video part for Gemini
     let videoPart: Record<string, unknown>;
 
     if (videoBytes.byteLength <= INLINE_MAX_BYTES) {
       const base64 = uint8ArrayToBase64(videoBytes);
-      videoPart = { inlineData: { mimeType: mime, data: base64 } };
+      videoPart = { inlineData: { mimeType, data: base64 } };
     } else {
-      const fileUri = await uploadToGeminiFileApi(videoBytes, mime);
-      videoPart = { fileData: { mimeType: mime, fileUri } };
+      const fileUri = await uploadToGeminiFileApi(videoBytes, mimeType);
+      videoPart = { fileData: { mimeType, fileUri } };
     }
 
-    // No time cap — analyze full video for all cuts
+    // Send to Gemini for audio identification
     const geminiRes = await fetch(GEMINI_GENERATE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [
           {
-            parts: [videoPart, { text: TEMPLATE_PROMPT }],
+            parts: [videoPart, { text: AUDIO_PROMPT }],
           },
         ],
         generationConfig: {
           temperature: 0.2,
-          maxOutputTokens: 4000,
+          maxOutputTokens: 1000,
           responseMimeType: "application/json",
         },
       }),
@@ -337,21 +275,52 @@ Deno.serve(async (req) => {
     }
 
     const text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
-
     if (!text) {
       throw new Error(`No result from Gemini: ${JSON.stringify(geminiData)}`);
     }
 
-    const template = JSON.parse(text);
+    const result = JSON.parse(text);
 
-    // Strip platform watermark/UI text from results
-    stripPlatformText(template);
+    // Detect platform from URL
+    let platform = "unknown";
+    if (videoUrl.includes("tiktok.com")) platform = "tiktok";
+    else if (videoUrl.includes("instagram.com")) platform = "instagram";
 
-    return new Response(JSON.stringify({ template }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    // Insert into trending_audio
+    const { error: insertError } = await supabase
+      .from("trending_audio")
+      .insert({
+        title: result.title || "Unknown Track",
+        artist: result.artist && result.artist !== "Unknown" ? result.artist : null,
+        platform,
+        genre: result.genre || null,
+        mood: result.mood || null,
+        energy: result.energy || null,
+        duration_seconds: result.duration_seconds || null,
+        external_url: videoUrl,
+        source: "url_extract",
+      });
+
+    if (insertError) {
+      console.error("Insert error:", insertError.message);
+    }
+
+    return new Response(
+      JSON.stringify({
+        track: {
+          title: result.title || "Unknown Track",
+          artist: result.artist || "Unknown",
+          genre: result.genre || null,
+          mood: result.mood || null,
+          confidence: result.confidence || "medium",
+        },
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
   } catch (err) {
-    console.error("analyze-reel-template error:", err.message);
+    console.error("extract-audio-from-url error:", err.message);
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

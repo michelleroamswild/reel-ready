@@ -48,12 +48,14 @@ export async function exportReel(
   onProgress({ stage: "loading", stageProgress: 0, overallProgress: 0 });
 
   const body = {
-    segments: segments.map((seg) => ({
-      videoUrl: seg.video.url,
-      startSeconds: seg.start_seconds,
-      endSeconds: seg.end_seconds,
-      sectionText: seg.section_text,
-    })),
+    segments: segments
+      .filter((seg) => seg.end_seconds > seg.start_seconds)
+      .map((seg) => ({
+        videoUrl: seg.video.url,
+        startSeconds: seg.start_seconds,
+        endSeconds: Math.max(seg.end_seconds, seg.start_seconds + 0.1),
+        sectionText: seg.section_text,
+      })),
     burnText: options.burnText,
     textPosition: options.textPosition ?? "bottom",
     textSize: options.textSize ?? 13,
