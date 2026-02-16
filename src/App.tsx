@@ -15,6 +15,8 @@ import ReelBuilderPage from "@/pages/ReelBuilderPage";
 import TrialBatchPage from "@/pages/TrialBatchPage";
 import VideoDetailPage from "@/pages/VideoDetailPage";
 import TrendsPage from "@/pages/TrendsPage";
+import AccountPage from "@/pages/AccountPage";
+import InstagramCallbackPage from "@/pages/InstagramCallbackPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,6 +45,11 @@ const App = () => (
                             <ReelBuilderPage />
                           </main>
                         } />
+                        <Route path="/instagram/callback" element={
+                          <main className="mx-auto max-w-lg px-4 pt-4 pb-20">
+                            <InstagramCallbackPage />
+                          </main>
+                        } />
                         <Route path="/trials/:batchId" element={
                           <main className="mx-auto max-w-6xl px-4 pt-4 pb-20">
                             <TrialBatchPage />
@@ -55,6 +62,7 @@ const App = () => (
                               <Route path="/phrases" element={<PhrasesPage />} />
                               <Route path="/videos" element={<VideosPage />} />
                               <Route path="/trends" element={<TrendsPage />} />
+                              <Route path="/account" element={<AccountPage />} />
                               <Route path="*" element={<NotFound />} />
                             </Routes>
                           </main>
