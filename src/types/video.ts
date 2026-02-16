@@ -27,5 +27,6 @@ export interface Video {
   analysis: VideoAnalysis | null;
   thumbnail_url: string | null;
   video_type: "clip" | "edit";
+  user_id: string;
   created_at: string;
 }

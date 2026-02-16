@@ -11,5 +11,6 @@ export interface TrendingAudio {
   energy: string | null;
   duration_seconds: number | null;
   external_url: string | null;
+  user_id: string | null;
   fetched_at: string;
 }

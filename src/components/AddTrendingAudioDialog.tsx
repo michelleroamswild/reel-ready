@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, getCurrentUserId } from "@/lib/supabase";
 import {
   Dialog,
   DialogContent,
@@ -91,6 +91,7 @@ export function AddTrendingAudioDialog({ open, onOpenChange, onSuccess }: Props)
     setManualLoading(true);
     setManualError(null);
     try {
+      const user_id = await getCurrentUserId();
       const { error } = await supabase.from("trending_audio").insert({
         title: manualTitle.trim(),
         artist: manualArtist.trim() || null,
@@ -98,6 +99,7 @@ export function AddTrendingAudioDialog({ open, onOpenChange, onSuccess }: Props)
         genre: manualGenre.trim() || null,
         external_url: manualUrl.trim() || null,
         source: "manual",
+        user_id,
       });
       if (error) throw error;
       setManualDone(true);

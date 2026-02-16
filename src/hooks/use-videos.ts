@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { supabase, getCurrentUserId } from "@/lib/supabase";
 import { uploadToR2, UploadCancelledError } from "@/lib/storage";
 import type { Video, VideoAnalysis } from "@/types/video";
 
@@ -92,6 +92,7 @@ export function useVideos() {
 
       if (signal?.aborted) throw new UploadCancelledError();
 
+      const user_id = await getCurrentUserId();
       const { data, error } = await supabase
         .from("videos")
         .insert({
@@ -101,6 +102,7 @@ export function useVideos() {
           size_bytes: file.size,
           mime_type: file.type,
           video_type: videoType ?? "clip",
+          user_id,
         })
         .select()
         .single();

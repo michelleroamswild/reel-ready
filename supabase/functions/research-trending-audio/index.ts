@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getAuthUser } from "../_shared/auth.ts";
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!;
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
@@ -19,6 +20,7 @@ Deno.serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
+    const { userId } = await getAuthUser(req);
     const { niche } = await req.json();
 
     if (!niche || typeof niche !== "string" || !niche.trim()) {
@@ -122,6 +124,7 @@ Only return the JSON, nothing else.`;
           mood: track.mood || null,
           energy: track.energy || null,
           source: "ai_research",
+          user_id: userId,
         });
 
       if (!insertError) insertedCount++;

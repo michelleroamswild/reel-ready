@@ -1,3 +1,5 @@
+import { getAuthUser } from "../_shared/auth.ts";
+
 const WORKER_URL = Deno.env.get("EXPORT_WORKER_URL")!;
 const WORKER_API_KEY = Deno.env.get("EXPORT_WORKER_API_KEY") || "";
 
@@ -13,6 +15,7 @@ Deno.serve(async (req) => {
   }
 
   try {
+    await getAuthUser(req);
     const { segments, burnText, textPosition } = await req.json();
 
     if (!segments?.length) {

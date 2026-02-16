@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getAuthUser } from "../_shared/auth.ts";
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!;
 const GEMINI_GENERATE_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
@@ -224,6 +225,7 @@ Deno.serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
+    const { userId } = await getAuthUser(req);
     const { videoUrl } = await req.json();
 
     if (!videoUrl || typeof videoUrl !== "string") {
@@ -299,6 +301,7 @@ Deno.serve(async (req) => {
         duration_seconds: result.duration_seconds || null,
         external_url: videoUrl,
         source: "url_extract",
+        user_id: userId,
       });
 
     if (insertError) {

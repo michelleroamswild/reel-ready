@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, getCurrentUserId } from "@/lib/supabase";
 import { uploadToR2 } from "@/lib/storage";
 import type { ReelTemplate } from "@/types/reel";
 import type { Video } from "@/types/video";
@@ -126,6 +126,7 @@ export function useCloneReel() {
       setState((s) => ({ ...s, step: "building" }));
 
       // Insert reel (no phrase_id for cloned reels)
+      const user_id = await getCurrentUserId();
       const { data: reel, error: reelError } = await supabase
         .from("reels")
         .insert({
@@ -134,6 +135,7 @@ export function useCloneReel() {
             state.template.totalDurationSeconds
           ),
           source_template: state.template,
+          user_id,
         })
         .select()
         .single();
