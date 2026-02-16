@@ -185,7 +185,7 @@ export function useReels() {
         return reelId;
       } catch (err) {
         // Rollback: delete the reel since segments failed
-        await supabase.from("reels").delete().eq("id", reelId).catch(() => {});
+        try { await supabase.from("reels").delete().eq("id", reelId); } catch {}
         throw err;
       }
     },
@@ -236,7 +236,7 @@ export function useReels() {
         });
 
       if (segError) {
-        await supabase.from("reels").delete().eq("id", reelId).catch(() => {});
+        try { await supabase.from("reels").delete().eq("id", reelId); } catch {}
         throw segError;
       }
 
@@ -351,6 +351,7 @@ export function useReel(id: string | undefined) {
       text_size: string;
       text_border: string;
       text_border_color: string;
+      text_color: string;
     }) => {
       const { error } = await supabase
         .from("reels")

@@ -8,6 +8,7 @@ import {
   type TextSize,
   type TextBorder,
   type TextBorderColor,
+  type TextColor,
 } from "@/lib/ffmpeg";
 import type { ReelSegmentWithVideo } from "@/types/reel";
 
@@ -32,6 +33,7 @@ export function useExportReel() {
         textSize?: TextSize;
         textBorder?: TextBorder;
         textBorderColor?: TextBorderColor;
+        textColor?: TextColor;
         filename: string;
       }
     ) => {
@@ -49,6 +51,7 @@ export function useExportReel() {
             textSize: options.textSize,
             textBorder: options.textBorder,
             textBorderColor: options.textBorderColor,
+            textColor: options.textColor,
           },
           (p) => {
             if (!cancelledRef.current) {

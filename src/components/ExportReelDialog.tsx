@@ -26,6 +26,7 @@ import type {
   TextSize,
   TextBorder,
   TextBorderColor,
+  TextColor,
 } from "@/lib/ffmpeg";
 
 interface Props {
@@ -39,6 +40,7 @@ interface Props {
   textSize: TextSize;
   textBorder: TextBorder;
   textBorderColor: TextBorderColor;
+  textColor: TextColor;
 }
 
 const STAGE_LABELS: Record<ExportStage, string> = {
@@ -60,6 +62,7 @@ export function ExportReelDialog({
   textSize,
   textBorder,
   textBorderColor,
+  textColor,
 }: Props) {
   const { isExporting, progress, error, startExport, cancelExport, reset } =
     useExportReel();
@@ -79,6 +82,7 @@ export function ExportReelDialog({
       textSize,
       textBorder,
       textBorderColor,
+      textColor,
       filename: `${safeName}_reel.mp4`,
     });
   };

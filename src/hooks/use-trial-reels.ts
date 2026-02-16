@@ -200,16 +200,8 @@ export function useGenerateTrialReels() {
         return batchId;
       } catch (err) {
         // Rollback: delete batch + any created reels (cascade handles segments)
-        await supabase
-          .from("reels")
-          .delete()
-          .eq("trial_batch_id", batchId)
-          .catch(() => {});
-        await supabase
-          .from("trial_batches")
-          .delete()
-          .eq("id", batchId)
-          .catch(() => {});
+        try { await supabase.from("reels").delete().eq("trial_batch_id", batchId); } catch {}
+        try { await supabase.from("trial_batches").delete().eq("id", batchId); } catch {}
         throw err;
       }
     },
@@ -272,7 +264,7 @@ export function useGenerateTrialReelsFromVideo() {
         });
 
       if (segError) {
-        await supabase.from("reels").delete().eq("id", baseReelId).catch(() => {});
+        try { await supabase.from("reels").delete().eq("id", baseReelId); } catch {}
         throw segError;
       }
 
@@ -284,7 +276,7 @@ export function useGenerateTrialReelsFromVideo() {
         .single();
 
       if (batchError) {
-        await supabase.from("reels").delete().eq("id", baseReelId).catch(() => {});
+        try { await supabase.from("reels").delete().eq("id", baseReelId); } catch {}
         throw batchError;
       }
       const batchId = batch.id as string;
@@ -448,21 +440,9 @@ export function useGenerateTrialReelsFromVideo() {
         return batchId;
       } catch (err) {
         // Rollback
-        await supabase
-          .from("reels")
-          .delete()
-          .eq("trial_batch_id", batchId)
-          .catch(() => {});
-        await supabase
-          .from("trial_batches")
-          .delete()
-          .eq("id", batchId)
-          .catch(() => {});
-        await supabase
-          .from("reels")
-          .delete()
-          .eq("id", baseReelId)
-          .catch(() => {});
+        try { await supabase.from("reels").delete().eq("trial_batch_id", batchId); } catch {}
+        try { await supabase.from("trial_batches").delete().eq("id", batchId); } catch {}
+        try { await supabase.from("reels").delete().eq("id", baseReelId); } catch {}
         throw err;
       }
     },

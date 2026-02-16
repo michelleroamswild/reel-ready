@@ -37,7 +37,7 @@ import { ArrowLeft, Play, Export, PencilSimple, Trash, Sparkle, Copy, Check, Pus
 import type { TrialVariantType } from "@/types/trial";
 import type { ReelSegmentWithVideo } from "@/types/reel";
 import type { Video } from "@/types/video";
-import type { TextPosition, TextSize, TextBorder, TextBorderColor } from "@/lib/ffmpeg";
+import type { TextPosition, TextSize, TextBorder, TextBorderColor, TextColor } from "@/lib/ffmpeg";
 import {
   DndContext,
   closestCenter,
@@ -59,13 +59,17 @@ const VARIANT_COLORS: Record<TrialVariantType, string> = {
   audio: "bg-orange-500/15 text-orange-700 border-orange-500/30",
 };
 
-/** Convert legacy string sizes ("small"/"medium"/"large") to numeric preview px */
+/** Convert legacy string sizes ("small"/"medium"/"large") or old px values to percentage of container width */
 function parseTextSize(value: string | number | undefined): number {
-  if (typeof value === "number") return value;
-  if (value === "small") return 9;
-  if (value === "large") return 24;
-  if (value === "medium") return 18;
-  return 9;
+  if (value === "small") return 3;
+  if (value === "large") return 7;
+  if (value === "medium") return 4.5;
+  const num = typeof value === "number" ? value : parseFloat(value ?? "");
+  if (isNaN(num) || num <= 0) return 4.5;
+  // Old px-based values were 9–24; new percentage values are 2.5–8.
+  // If > 8, it's a legacy px value — convert by mapping 9–24 → 2.5–8
+  if (num > 8) return Math.min(8, Math.max(2.5, 2.5 + ((num - 9) / (24 - 9)) * (8 - 2.5)));
+  return num;
 }
 
 export default function ReelBuilderPage() {
@@ -97,9 +101,10 @@ export default function ReelBuilderPage() {
   // Text overlay settings — initialized from saved reel data
   const [burnText, setBurnText] = useState(true);
   const [textPosition, setTextPosition] = useState<TextPosition>("center");
-  const [textSize, setTextSize] = useState<TextSize>(13);
+  const [textSize, setTextSize] = useState<TextSize>(4.5);
   const [textBorder, setTextBorder] = useState<TextBorder>("shadow");
   const [textBorderColor, setTextBorderColor] = useState<TextBorderColor>("black");
+  const [textColor, setTextColor] = useState<TextColor>("white");
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   // Caption generator state
@@ -133,9 +138,10 @@ export default function ReelBuilderPage() {
     if (reel && !settingsLoaded) {
       setBurnText(reel.burn_text ?? true);
       setTextPosition((reel.text_position as TextPosition) ?? "center");
-      setTextSize(parseTextSize(reel.text_size) ?? 13);
+      setTextSize(parseTextSize(reel.text_size));
       setTextBorder((reel.text_border as TextBorder) ?? "shadow");
       setTextBorderColor((reel.text_border_color as TextBorderColor) ?? "black");
+      setTextColor(reel.text_color ?? "white");
       setSettingsLoaded(true);
     }
   }, [reel, settingsLoaded]);
@@ -148,6 +154,7 @@ export default function ReelBuilderPage() {
       text_size: string;
       text_border: string;
       text_border_color: string;
+      text_color: string;
     }>) => {
       if (!settingsLoaded) return;
       updateTextSettings({
@@ -156,10 +163,11 @@ export default function ReelBuilderPage() {
         text_size: String(textSize),
         text_border: textBorder,
         text_border_color: textBorderColor,
+        text_color: textColor,
         ...overrides,
       });
     },
-    [settingsLoaded, burnText, textPosition, textSize, textBorder, textBorderColor, updateTextSettings]
+    [settingsLoaded, burnText, textPosition, textSize, textBorder, textBorderColor, textColor, updateTextSettings]
   );
 
   // Inline preview state
@@ -447,9 +455,9 @@ export default function ReelBuilderPage() {
   };
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="md:-mx-4 md:-mt-4 md:fixed md:inset-x-0 md:top-0 md:bottom-[4rem] md:px-8 md:pt-6 md:max-w-6xl md:mx-auto md:flex md:flex-col">
+      {/* Top header bar */}
+      <div className="flex items-center justify-between mb-4">
         <Button
           variant="ghost"
           size="sm"
@@ -481,6 +489,119 @@ export default function ReelBuilderPage() {
           </Button>
         </div>
       </div>
+
+      {/* Two-column body */}
+      <div className="flex flex-col md:flex-row md:gap-6 md:flex-1 md:min-h-0">
+      {/* Left: Preview */}
+      <div className="md:flex md:flex-col md:items-center md:justify-center md:w-1/2 shrink-0 md:h-full">
+        <div className="relative rounded-lg border bg-black overflow-hidden aspect-[9/16] h-full mx-auto" style={{ containerType: "inline-size" }}>
+          {segments.length === 0 ? (
+            <div className="w-full h-full flex items-center justify-center">
+              <p className="text-sm text-white/50">No segments</p>
+            </div>
+          ) : (
+            segments.map((seg, i) => (
+              <video
+                key={seg.id}
+                ref={(el) => { videoRefs.current[i] = el; }}
+                src={`${seg.video.url}#t=${seg.start_seconds}`}
+                className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-150 ${
+                  i === currentIndex ? "opacity-100 z-10" : "opacity-0 z-0"
+                }`}
+                playsInline
+                preload={i === currentIndex ? "auto" : "metadata"}
+                poster={seg.video.thumbnail_url ?? undefined}
+                onTimeUpdate={() => handleTimeUpdate(i)}
+              />
+            ))
+          )}
+
+          {/* Play overlay */}
+          {current && !isPlaying && (
+            <div
+              className="absolute inset-0 z-20 cursor-pointer"
+              onClick={handlePlay}
+            >
+              <div className="absolute bottom-3 left-3 h-10 w-10 rounded-full bg-white/90 flex items-center justify-center">
+                <Play className="h-5 w-5 text-black ml-0.5" weight="fill" />
+              </div>
+            </div>
+          )}
+
+          {/* Tap to pause */}
+          {isPlaying && (
+            <div
+              className="absolute inset-0 z-20 cursor-pointer"
+              onClick={handlePause}
+            />
+          )}
+
+          {/* Section text overlay */}
+          {current && burnText && current.section_text && (
+            <div
+              className={`absolute left-0 right-0 z-20 px-3 ${
+                textPosition === "top"
+                  ? "top-[15%]"
+                  : textPosition === "center"
+                  ? "top-1/2 -translate-y-1/2"
+                  : "bottom-[15%]"
+              }`}
+            >
+              <p
+                className="font-semibold text-center whitespace-pre-line"
+                style={{
+                  fontSize: `${textSize}cqw`,
+                  color: textColor,
+                  ...(textBorder === "outline"
+                    ? {
+                        WebkitTextStroke: `0.8px ${textBorderColor}`,
+                        textShadow: `0 0 2px ${textBorderColor}`,
+                      }
+                    : textBorder === "shadow"
+                    ? {
+                        textShadow: "0 0 6px rgba(0,0,0,0.7), 0 0 12px rgba(0,0,0,0.4)",
+                      }
+                    : {
+                        background: `${textBorderColor === "black" ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.35)"}`,
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                        display: "inline",
+                        boxDecorationBreak: "clone" as const,
+                      }),
+                }}
+              >
+                {current.section_text}
+              </p>
+            </div>
+          )}
+
+          {/* Segment progress bar */}
+          {segments.length > 1 && (
+            <div className="absolute bottom-0 left-0 right-0 z-20 flex h-1">
+              {segments.map((_, i) => (
+                <div
+                  key={i}
+                  className="flex-1 relative"
+                  style={{ borderRight: i < segments.length - 1 ? "1px solid rgba(0,0,0,0.3)" : undefined }}
+                >
+                  <div
+                    className={`h-full transition-colors ${
+                      i < currentIndex
+                        ? "bg-white/80"
+                        : i === currentIndex
+                        ? "bg-white"
+                        : "bg-white/25"
+                    }`}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Right: Scrollable content */}
+      <div className="flex-1 min-w-0 space-y-4 md:pr-4 md:overflow-y-auto md:h-full">
 
       {/* Variant info banner (for variant reels) */}
       {reel.trial_batch_id && (() => {
@@ -543,118 +664,7 @@ export default function ReelBuilderPage() {
         );
       })()}
 
-      {/* Top row: Preview + details side by side */}
-      <div className="flex flex-col md:flex-row gap-6">
-        {/* Preview player */}
-        <div className="shrink-0 md:w-64 lg:w-72">
-          <div className="relative rounded-lg border bg-black aspect-[9/16] overflow-hidden">
-            {segments.length === 0 ? (
-              <div className="w-full h-full flex items-center justify-center">
-                <p className="text-sm text-white/50">No segments</p>
-              </div>
-            ) : (
-              segments.map((seg, i) => (
-                <video
-                  key={seg.id}
-                  ref={(el) => { videoRefs.current[i] = el; }}
-                  src={`${seg.video.url}#t=${seg.start_seconds}`}
-                  className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-150 ${
-                    i === currentIndex ? "opacity-100 z-10" : "opacity-0 z-0"
-                  }`}
-                  playsInline
-                  preload={i === currentIndex ? "auto" : "metadata"}
-                  poster={seg.video.thumbnail_url ?? undefined}
-                  onTimeUpdate={() => handleTimeUpdate(i)}
-                />
-              ))
-            )}
-
-            {/* Play overlay */}
-            {current && !isPlaying && (
-              <div
-                className="absolute inset-0 z-20 cursor-pointer"
-                onClick={handlePlay}
-              >
-                <div className="absolute bottom-3 left-3 h-10 w-10 rounded-full bg-white/90 flex items-center justify-center">
-                  <Play className="h-5 w-5 text-black ml-0.5" weight="fill" />
-                </div>
-              </div>
-            )}
-
-            {/* Tap to pause */}
-            {isPlaying && (
-              <div
-                className="absolute inset-0 z-20 cursor-pointer"
-                onClick={handlePause}
-              />
-            )}
-
-            {/* Section text overlay */}
-            {current && burnText && current.section_text && (
-              <div
-                className={`absolute left-0 right-0 z-20 px-3 ${
-                  textPosition === "top"
-                    ? "top-[15%]"
-                    : textPosition === "center"
-                    ? "top-1/2 -translate-y-1/2"
-                    : "bottom-[15%]"
-                }`}
-              >
-                <p
-                  className="text-white font-semibold text-center whitespace-pre-line"
-                  style={{
-                    fontSize: textSize,
-                    ...(textBorder === "outline"
-                      ? {
-                          WebkitTextStroke: `0.8px ${textBorderColor}`,
-                          textShadow: `0 0 2px ${textBorderColor}`,
-                        }
-                      : textBorder === "shadow"
-                      ? {
-                          textShadow: "1px 1px 3px rgba(0,0,0,0.5)",
-                        }
-                      : {
-                          background: `${textBorderColor === "black" ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.35)"}`,
-                          padding: "4px 10px",
-                          borderRadius: 6,
-                          display: "inline",
-                          boxDecorationBreak: "clone" as const,
-                        }),
-                  }}
-                >
-                  {current.section_text}
-                </p>
-              </div>
-            )}
-
-            {/* Segment progress bar */}
-            {segments.length > 1 && (
-              <div className="absolute bottom-0 left-0 right-0 z-20 flex h-1">
-                {segments.map((_, i) => (
-                  <div
-                    key={i}
-                    className="flex-1 relative"
-                    style={{ borderRight: i < segments.length - 1 ? "1px solid rgba(0,0,0,0.3)" : undefined }}
-                  >
-                    <div
-                      className={`h-full transition-colors ${
-                        i < currentIndex
-                          ? "bg-white/80"
-                          : i === currentIndex
-                          ? "bg-white"
-                          : "bg-white/25"
-                      }`}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Right: Details + text controls */}
-        <div className="flex-1 min-w-0 space-y-4">
-          {/* Title + badges */}
+      {/* Title + badges */}
           <div className="space-y-1">
             {editingTitle ? (
               <input
@@ -818,14 +828,39 @@ export default function ReelBuilderPage() {
                   <div className="flex items-center gap-2 h-7">
                     <span className="text-[10px] text-muted-foreground">A</span>
                     <Slider
-                      min={9}
-                      max={24}
-                      step={1}
+                      min={2.5}
+                      max={8}
+                      step={0.5}
                       value={[textSize]}
                       onValueChange={([v]) => { setTextSize(v); saveTextSettings({ text_size: String(v) }); }}
                       className="flex-1"
                     />
                     <span className="text-sm font-medium text-muted-foreground">A</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Color</Label>
+                  <div className="flex gap-1">
+                    {([
+                      { value: "#ffffff", label: "White" },
+                      { value: "#000000", label: "Black" },
+                      { value: "#facc15", label: "Yellow" },
+                      { value: "#FFF7A7", label: "Soft Yellow" },
+                      { value: "#f87171", label: "Red" },
+                      { value: "#34d399", label: "Green" },
+                      { value: "#60a5fa", label: "Blue" },
+                    ] as const).map((opt) => (
+                      <button
+                        key={opt.value}
+                        title={opt.label}
+                        className={`h-7 w-7 rounded-full border-2 transition-colors ${
+                          textColor === opt.value ? "border-primary scale-110" : "border-border hover:border-primary/50"
+                        }`}
+                        style={{ backgroundColor: opt.value }}
+                        onClick={() => { setTextColor(opt.value); saveTextSettings({ text_color: opt.value }); }}
+                      />
+                    ))}
                   </div>
                 </div>
 
@@ -849,28 +884,6 @@ export default function ReelBuilderPage() {
                     ))}
                   </div>
                 </div>
-
-                {textBorder !== "shadow" && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Border color</Label>
-                    <div className="flex gap-1">
-                      {([
-                        { value: "black", label: "Black" },
-                        { value: "white", label: "White" },
-                      ] as const).map((opt) => (
-                        <Button
-                          key={opt.value}
-                          variant={textBorderColor === opt.value ? "default" : "outline"}
-                          size="sm"
-                          className="flex-1 h-7 text-xs px-1"
-                          onClick={() => { setTextBorderColor(opt.value); saveTextSettings({ text_border_color: opt.value }); }}
-                        >
-                          {opt.label}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -1203,8 +1216,6 @@ export default function ReelBuilderPage() {
               </div>
             )}
           </div>
-        </div>
-      </div>
 
       {/* Segment strip — horizontal scroll */}
       {reel.reel_segments.length === 0 ? (
@@ -1338,6 +1349,9 @@ export default function ReelBuilderPage() {
         </div>
       )}
 
+      </div>{/* end right column */}
+      </div>{/* end two-column body */}
+
       {/* Swap dialog */}
       <Dialog
         open={swapSegment !== null}
@@ -1396,10 +1410,10 @@ export default function ReelBuilderPage() {
                     .map((v: Video) => (
                   <div
                     key={v.id}
-                    className={`relative rounded-lg overflow-hidden cursor-pointer transition-all ${
+                    className={`relative rounded-lg overflow-hidden cursor-pointer transition-colors ${
                       swapVideoId === v.id
-                        ? "ring-2 ring-primary ring-offset-1"
-                        : "border hover:border-primary/50"
+                        ? "border-2 border-primary"
+                        : "border-2 border-border hover:border-primary/50"
                     }`}
                     onClick={() => {
                       setSwapVideoId(v.id);
@@ -1512,10 +1526,10 @@ export default function ReelBuilderPage() {
                     .map((v: Video) => (
                       <div
                         key={v.id}
-                        className={`relative rounded-lg overflow-hidden cursor-pointer transition-all ${
+                        className={`relative rounded-lg overflow-hidden cursor-pointer transition-colors ${
                           addClipVideoId === v.id
-                            ? "ring-2 ring-primary ring-offset-1"
-                            : "border hover:border-primary/50"
+                            ? "border-2 border-primary"
+                            : "border-2 border-border hover:border-primary/50"
                         }`}
                         onClick={() => setAddClipVideoId(v.id)}
                       >
@@ -1678,6 +1692,7 @@ export default function ReelBuilderPage() {
         textSize={textSize}
         textBorder={textBorder}
         textBorderColor={textBorderColor}
+        textColor={textColor}
       />
 
       {/* Delete trial batch confirmation */}
