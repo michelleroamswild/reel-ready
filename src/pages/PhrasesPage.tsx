@@ -2,12 +2,10 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePhrases } from "@/hooks/use-phrases";
 import { useVideos } from "@/hooks/use-videos";
-import { useMatches } from "@/hooks/use-matches";
 import { useReels } from "@/hooks/use-reels";
 import { PhraseCard } from "@/components/PhraseCard";
 import { PhraseForm } from "@/components/PhraseForm";
 import { BulkPhraseDialog } from "@/components/BulkPhraseDialog";
-import { SuggestMatchesDialog } from "@/components/SuggestMatchesDialog";
 import { NewReelDialog } from "@/components/NewReelDialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -26,14 +24,12 @@ export default function PhrasesPage() {
   const navigate = useNavigate();
   const { phrases, isLoading, addPhrase, updatePhrase, deletePhrase } = usePhrases();
   const { videos } = useVideos();
-  const { saveMatch } = useMatches();
   const { createReel, isCreating } = useReels();
   const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Phrase | null>(null);
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
-  const [matchPhrase, setMatchPhrase] = useState<Phrase | null>(null);
   const [showBulk, setShowBulk] = useState(false);
   const [reelPhrase, setReelPhrase] = useState<Phrase | null>(null);
 
@@ -158,21 +154,11 @@ export default function PhrasesPage() {
               phrase={p}
               onEdit={handleEdit}
               onDelete={deletePhrase}
-              onFindMatches={setMatchPhrase}
               onBuildReel={setReelPhrase}
             />
           ))}
         </div>
       )}
-
-      <SuggestMatchesDialog
-        open={matchPhrase !== null}
-        onOpenChange={(open) => !open && setMatchPhrase(null)}
-        initialPhrase={matchPhrase}
-        phrases={phrases}
-        videos={videos}
-        onSaveMatch={saveMatch}
-      />
 
       <BulkPhraseDialog
         open={showBulk}

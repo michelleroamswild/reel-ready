@@ -185,7 +185,7 @@ export function useReels() {
         return reelId;
       } catch (err) {
         // Rollback: delete the reel since segments failed
-        await supabase.from("reels").delete().eq("id", reelId).catch(() => {});
+        try { await supabase.from("reels").delete().eq("id", reelId); } catch {}
         throw err;
       }
     },
@@ -236,7 +236,7 @@ export function useReels() {
         });
 
       if (segError) {
-        await supabase.from("reels").delete().eq("id", reelId).catch(() => {});
+        try { await supabase.from("reels").delete().eq("id", reelId); } catch {}
         throw segError;
       }
 
@@ -351,6 +351,7 @@ export function useReel(id: string | undefined) {
       text_size: string;
       text_border: string;
       text_border_color: string;
+      text_color: string;
     }) => {
       const { error } = await supabase
         .from("reels")
@@ -378,6 +379,61 @@ export function useReel(id: string | undefined) {
     },
   });
 
+  const addSegmentMutation = useMutation({
+    mutationFn: async ({
+      videoId,
+      sectionText,
+      startSeconds,
+      endSeconds,
+    }: {
+      videoId: string;
+      sectionText: string;
+      startSeconds: number;
+      endSeconds: number;
+    }) => {
+      const { data: existing } = await supabase
+        .from("reel_segments")
+        .select("section_index")
+        .eq("reel_id", id!)
+        .order("section_index", { ascending: false })
+        .limit(1);
+
+      const nextIndex = (existing?.[0]?.section_index ?? -1) + 1;
+
+      const { error } = await supabase.from("reel_segments").insert({
+        reel_id: id!,
+        video_id: videoId,
+        section_text: sectionText,
+        section_index: nextIndex,
+        start_seconds: startSeconds,
+        end_seconds: endSeconds,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      if (id) queryClient.invalidateQueries({ queryKey: reelKey(id) });
+      queryClient.invalidateQueries({ queryKey: REELS_KEY });
+    },
+  });
+
+  const reorderSegmentsMutation = useMutation({
+    mutationFn: async (orderedIds: string[]) => {
+      const updates = orderedIds.map((segId, i) =>
+        supabase
+          .from("reel_segments")
+          .update({ section_index: i })
+          .eq("id", segId)
+      );
+      const results = await Promise.all(updates);
+      const failed = results.find((r) => r.error);
+      if (failed?.error) throw failed.error;
+    },
+    onSuccess: () => {
+      if (id) queryClient.invalidateQueries({ queryKey: reelKey(id) });
+      queryClient.invalidateQueries({ queryKey: REELS_KEY });
+    },
+  });
+
   return {
     reel,
     isLoading,
@@ -388,5 +444,8 @@ export function useReel(id: string | undefined) {
     updateTitle: updateTitleMutation.mutateAsync,
     updateTextSettings: updateTextSettingsMutation.mutateAsync,
     updateSavedCaptions: updateSavedCaptionsMutation.mutateAsync,
+    addSegment: addSegmentMutation.mutateAsync,
+    isAdding: addSegmentMutation.isPending,
+    reorderSegments: reorderSegmentsMutation.mutateAsync,
   };
 }

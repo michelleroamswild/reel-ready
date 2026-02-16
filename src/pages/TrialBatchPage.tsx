@@ -4,9 +4,13 @@ import { useTrialBatch } from "@/hooks/use-trial-reels";
 import { useExportReel } from "@/hooks/use-export-reel";
 import { useToast } from "@/hooks/use-toast";
 import { TrialVariantCard } from "@/components/TrialVariantCard";
+import { AccountProfileForm } from "@/components/AccountProfileForm";
+import { PostingStrategyPanel } from "@/components/PostingStrategyPanel";
+import { recommendPostingStrategy } from "@/lib/posting-strategy";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import type { AccountState, PostingStrategy } from "@/types/posting-strategy";
 import {
   ArrowLeft,
   Export,
@@ -15,6 +19,7 @@ import {
   CaretDown,
   CaretUp,
   Sparkle,
+  Strategy,
 } from "@phosphor-icons/react";
 
 export default function TrialBatchPage() {
@@ -30,6 +35,8 @@ export default function TrialBatchPage() {
   const [batchExportTotal, setBatchExportTotal] = useState(0);
   const isBatchExporting = batchExportIndex >= 0;
   const [showPatterns, setShowPatterns] = useState(false);
+  const [showStrategy, setShowStrategy] = useState(false);
+  const [strategy, setStrategy] = useState<PostingStrategy | null>(null);
 
   const handleExportAll = useCallback(async () => {
     if (!batch?.reels.length) return;
@@ -75,6 +82,19 @@ export default function TrialBatchPage() {
       title: `Exported ${reels.length} trial reel${reels.length !== 1 ? "s" : ""}`,
     });
   }, [batch, startExport, resetExport, toast]);
+
+  const handleAccountState = useCallback(
+    (state: AccountState) => {
+      if (!batch?.reels.length) return;
+      const result = recommendPostingStrategy(
+        batch.reels,
+        state,
+        batch.base_reel
+      );
+      setStrategy(result);
+    },
+    [batch]
+  );
 
   if (isLoading) {
     return (
@@ -261,6 +281,38 @@ export default function TrialBatchPage() {
         <p className="text-sm text-muted-foreground text-center py-8">
           No variant reels found for this batch.
         </p>
+      )}
+
+      {/* Strategy section */}
+      {!isGenerating && batch.reels.length > 1 && (
+        <div className="space-y-3">
+          <button
+            className="w-full flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-left hover:bg-accent transition-colors"
+            onClick={() => setShowStrategy(!showStrategy)}
+          >
+            <Strategy className="h-5 w-5 text-primary shrink-0" />
+            <span className="text-sm font-medium flex-1">
+              Posting Strategy
+            </span>
+            {strategy && (
+              <Badge variant="secondary" className="text-[10px] mr-1">
+                {strategy.cadenceDescription}
+              </Badge>
+            )}
+            {showStrategy ? (
+              <CaretUp className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <CaretDown className="h-4 w-4 text-muted-foreground" />
+            )}
+          </button>
+
+          {showStrategy && (
+            <div className="space-y-4">
+              <AccountProfileForm onAccountState={handleAccountState} />
+              {strategy && <PostingStrategyPanel strategy={strategy} />}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

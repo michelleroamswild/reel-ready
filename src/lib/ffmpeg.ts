@@ -22,6 +22,7 @@ export type TextPosition = "top" | "center" | "bottom";
 export type TextSize = number;
 export type TextBorder = "outline" | "shadow" | "box";
 export type TextBorderColor = "black" | "white";
+export type TextColor = string;
 
 const WORKER_URL = import.meta.env.VITE_EXPORT_WORKER_URL as string;
 
@@ -38,6 +39,7 @@ export async function exportReel(
     textSize?: TextSize;
     textBorder?: TextBorder;
     textBorderColor?: TextBorderColor;
+    textColor?: TextColor;
   },
   onProgress: ProgressCallback
 ): Promise<Blob> {
@@ -58,9 +60,10 @@ export async function exportReel(
       })),
     burnText: options.burnText,
     textPosition: options.textPosition ?? "bottom",
-    textSize: options.textSize ?? 13,
+    textSize: Math.round(((options.textSize ?? 4.5) / 100) * 1080),
     textBorder: options.textBorder ?? "outline",
     textBorderColor: options.textBorderColor ?? "black",
+    textColor: options.textColor ?? "white",
   };
 
   // Estimate total processing time: ~8s per segment for download + encode
