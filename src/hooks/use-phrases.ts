@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { supabase, getCurrentUserId } from "@/lib/supabase";
 import type { Phrase, PhraseAnalysis } from "@/types/phrase";
 
 const PHRASES_KEY = ["phrases"];
@@ -59,9 +59,10 @@ export function usePhrases() {
       tags: string[];
       notes: string;
     }) => {
+      const user_id = await getCurrentUserId();
       const { data, error } = await supabase
         .from("phrases")
-        .insert({ text, tags, notes })
+        .insert({ text, tags, notes, user_id })
         .select()
         .single();
 

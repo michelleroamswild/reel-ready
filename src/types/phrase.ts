@@ -14,5 +14,6 @@ export interface Phrase {
   tags: string[];
   notes: string;
   analysis: PhraseAnalysis | null;
+  user_id: string;
   created_at: string;
 }

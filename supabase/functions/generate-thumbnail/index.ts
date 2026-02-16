@@ -1,5 +1,6 @@
 import { S3Client, PutObjectCommand } from "npm:@aws-sdk/client-s3";
 import { createClient } from "npm:@supabase/supabase-js";
+import { getAuthUser } from "../_shared/auth.ts";
 
 const s3 = new S3Client({
   region: "auto",
@@ -32,6 +33,7 @@ Deno.serve(async (req) => {
   }
 
   try {
+    await getAuthUser(req);
     const { videoId, videoUrl } = await req.json();
 
     if (!videoId || !videoUrl) {

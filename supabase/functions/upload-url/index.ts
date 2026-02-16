@@ -1,5 +1,6 @@
 import { S3Client, PutObjectCommand } from "npm:@aws-sdk/client-s3";
 import { getSignedUrl } from "npm:@aws-sdk/s3-request-presigner";
+import { getAuthUser } from "../_shared/auth.ts";
 
 const s3 = new S3Client({
   region: "auto",
@@ -24,6 +25,7 @@ Deno.serve(async (req) => {
   }
 
   try {
+    await getAuthUser(req);
     const { filename, contentType } = await req.json();
 
     if (!filename || !contentType) {

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { supabase, getCurrentUserId } from "@/lib/supabase";
 import type { MatchWithDetails } from "@/types/match";
 
 const MATCHES_KEY = ["matches"];
@@ -40,6 +40,7 @@ export function useMatches() {
       score?: number;
       reasoning?: string;
     }) => {
+      const user_id = await getCurrentUserId();
       const { data, error } = await supabase
         .from("matches")
         .insert({
@@ -47,6 +48,7 @@ export function useMatches() {
           video_id: videoId,
           score: score ?? null,
           reasoning: reasoning ?? "",
+          user_id,
         })
         .select()
         .single();

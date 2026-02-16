@@ -5,6 +5,7 @@ export interface Match {
   notes: string;
   score: number | null;
   reasoning: string;
+  user_id: string;
   created_at: string;
 }
 

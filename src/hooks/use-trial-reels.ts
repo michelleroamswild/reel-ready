@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { supabase, getCurrentUserId } from "@/lib/supabase";
 import type { Reel, ReelWithDetails } from "@/types/reel";
 import type { Video } from "@/types/video";
 import type { TrialBatch, TrialBatchWithReels, ReferencePatterns } from "@/types/trial";
@@ -28,9 +28,10 @@ export function useGenerateTrialReels() {
       referenceUrls?: string[];
     }) => {
       // 1. Create trial_batches row
+      const user_id = await getCurrentUserId();
       const { data: batch, error: batchError } = await supabase
         .from("trial_batches")
-        .insert({ base_reel_id: reel.id, status: "generating" })
+        .insert({ base_reel_id: reel.id, status: "generating", user_id })
         .select()
         .single();
 
@@ -145,6 +146,7 @@ export function useGenerateTrialReels() {
               trial_batch_id: batchId,
               trial_variant_type: variant.variantType,
               trial_variant_label: label,
+              user_id,
               // Copy text settings from base reel
               text_position: reel.text_position,
               text_size: reel.text_size,
@@ -239,6 +241,7 @@ export function useGenerateTrialReelsFromVideo() {
       referenceUrls?: string[];
     }) => {
       // 1. Create a base reel from this video
+      const user_id = await getCurrentUserId();
       const duration = video.duration_seconds ?? 10;
       const title = video.filename.replace(/\.[^.]+$/, "");
 
@@ -248,6 +251,7 @@ export function useGenerateTrialReelsFromVideo() {
           phrase_id: null,
           title,
           target_duration_seconds: Math.round(duration),
+          user_id,
         })
         .select()
         .single();
@@ -275,7 +279,7 @@ export function useGenerateTrialReelsFromVideo() {
       // 2. Create trial batch
       const { data: batch, error: batchError } = await supabase
         .from("trial_batches")
-        .insert({ base_reel_id: baseReelId, status: "generating" })
+        .insert({ base_reel_id: baseReelId, status: "generating", user_id })
         .select()
         .single();
 
@@ -397,6 +401,7 @@ export function useGenerateTrialReelsFromVideo() {
               trial_batch_id: batchId,
               trial_variant_type: variant.variantType,
               trial_variant_label: label,
+              user_id,
             })
             .select()
             .single();

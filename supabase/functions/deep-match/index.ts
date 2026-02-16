@@ -1,3 +1,5 @@
+import { getAuthUser } from "../_shared/auth.ts";
+
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!;
 
 const corsHeaders = {
@@ -51,6 +53,7 @@ Deno.serve(async (req) => {
   }
 
   try {
+    await getAuthUser(req);
     const {
       phraseText,
       phraseTags,

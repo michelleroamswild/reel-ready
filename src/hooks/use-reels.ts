@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { supabase, getCurrentUserId } from "@/lib/supabase";
 import type { Reel, ReelWithDetails } from "@/types/reel";
 import type { Phrase } from "@/types/phrase";
 import type { Video } from "@/types/video";
@@ -83,12 +83,14 @@ export function useReels() {
       videos: Video[];
     }) => {
       // 1. Insert the reel
+      const user_id = await getCurrentUserId();
       const { data: reel, error: reelError } = await supabase
         .from("reels")
         .insert({
           phrase_id: phrase.id,
           title,
           target_duration_seconds: targetDuration,
+          user_id,
         })
         .select()
         .single();
@@ -205,12 +207,14 @@ export function useReels() {
       endSeconds: number;
     }) => {
       // 1. Insert reel with no phrase
+      const user_id = await getCurrentUserId();
       const { data: reel, error: reelError } = await supabase
         .from("reels")
         .insert({
           phrase_id: null,
           title,
           target_duration_seconds: endSeconds - startSeconds,
+          user_id,
         })
         .select()
         .single();

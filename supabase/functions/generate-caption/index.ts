@@ -1,3 +1,5 @@
+import { getAuthUser } from "../_shared/auth.ts";
+
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!;
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
@@ -24,6 +26,7 @@ Deno.serve(async (req) => {
   }
 
   try {
+    await getAuthUser(req);
     const { mood, tone, tense, iterateOn, segments } = (await req.json()) as {
       mood: string;
       tone: string;

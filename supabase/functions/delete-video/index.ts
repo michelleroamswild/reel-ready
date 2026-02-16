@@ -1,5 +1,6 @@
 import { S3Client, DeleteObjectCommand } from "npm:@aws-sdk/client-s3";
 import { createClient } from "npm:@supabase/supabase-js";
+import { getAuthUser } from "../_shared/auth.ts";
 
 const s3 = new S3Client({
   region: "auto",
@@ -29,6 +30,7 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const { userId } = await getAuthUser(req);
     const { videoId } = await req.json();
 
     if (!videoId) {
@@ -41,11 +43,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Fetch video record to get the R2 key
+    // Fetch video record to get the R2 key — scoped to user
     const { data: video, error: fetchError } = await supabase
       .from("videos")
       .select("id, r2_key")
       .eq("id", videoId)
+      .eq("user_id", userId)
       .single();
 
     if (fetchError || !video) {
@@ -62,11 +65,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Delete from database
+    // Delete from database — scoped to user
     const { error: deleteError } = await supabase
       .from("videos")
       .delete()
-      .eq("id", videoId);
+      .eq("id", videoId)
+      .eq("user_id", userId);
 
     if (deleteError) {
       throw new Error(`Failed to delete video record: ${deleteError.message}`);

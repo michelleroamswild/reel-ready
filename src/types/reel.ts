@@ -42,6 +42,7 @@ export interface Reel {
   trial_batch_id: string | null;
   trial_variant_type: string | null;
   trial_variant_label: string | null;
+  user_id: string;
   created_at: string;
   updated_at: string;
 }
