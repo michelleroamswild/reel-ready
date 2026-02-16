@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useReel } from "@/hooks/use-reels";
 import { useVideos } from "@/hooks/use-videos";
@@ -33,11 +33,25 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VideoThumbnail } from "@/components/VideoThumbnail";
-import { ArrowLeft, Play, Export, PencilSimple, Trash, Sparkle, Copy, Check, PushPin, X, Flask, MusicNote, CaretLeft, CaretRight, CircleNotch } from "@phosphor-icons/react";
+import { ArrowLeft, Play, Export, PencilSimple, Trash, Sparkle, Copy, Check, PushPin, X, Flask, MusicNote, CaretLeft, CaretRight, CircleNotch, Plus } from "@phosphor-icons/react";
 import type { TrialVariantType } from "@/types/trial";
 import type { ReelSegmentWithVideo } from "@/types/reel";
 import type { Video } from "@/types/video";
 import type { TextPosition, TextSize, TextBorder, TextBorderColor } from "@/lib/ffmpeg";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 const VARIANT_COLORS: Record<TrialVariantType, string> = {
   text: "bg-purple-500/15 text-purple-700 border-purple-500/30",
@@ -58,7 +72,7 @@ export default function ReelBuilderPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { reel, isLoading, updateSegment, isUpdating, updateSegmentText, deleteSegment, updateTitle, updateTextSettings, updateSavedCaptions } = useReel(id);
+  const { reel, isLoading, updateSegment, isUpdating, updateSegmentText, deleteSegment, updateTitle, updateTextSettings, updateSavedCaptions, addSegment, isAdding, reorderSegments } = useReel(id);
   const { videos } = useVideos();
   const generateTrialReels = useGenerateTrialReels();
   const { data: trialBatches } = useTrialBatchesForReel(id);
@@ -69,6 +83,7 @@ export default function ReelBuilderPage() {
   const [swapSegment, setSwapSegment] = useState<ReelSegmentWithVideo | null>(null);
   const [swapVideoId, setSwapVideoId] = useState<string>("");
   const [swapSuggesting, setSwapSuggesting] = useState(false);
+  const [swapSearch, setSwapSearch] = useState("");
   const [showExport, setShowExport] = useState(() => searchParams.get("export") === "true");
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
@@ -100,6 +115,14 @@ export default function ReelBuilderPage() {
   const [captionTense, setCaptionTense] = useState<string>("timeless");
   const [iteratingIndex, setIteratingIndex] = useState<number | null>(null);
   const [captionIterations, setCaptionIterations] = useState<Record<number, { text: string; hashtags: string[] }[]>>({});
+
+  // Add clip state
+  const [showAddClip, setShowAddClip] = useState(false);
+  const [addClipVideoId, setAddClipVideoId] = useState("");
+  const [addClipDuration, setAddClipDuration] = useState("3");
+  const [addClipText, setAddClipText] = useState("");
+  const [addClipSuggesting, setAddClipSuggesting] = useState(false);
+  const [addClipSearch, setAddClipSearch] = useState("");
 
   // Trial reels state
   const [showTrialConfirm, setShowTrialConfirm] = useState(false);
@@ -147,6 +170,38 @@ export default function ReelBuilderPage() {
 
   const segments = reel?.reel_segments ?? [];
   const current = segments[currentIndex];
+  const segmentIds = useMemo(() => segments.map((s) => s.id), [segments]);
+
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+
+      const oldIndex = segments.findIndex((s) => s.id === active.id);
+      const newIndex = segments.findIndex((s) => s.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
+
+      const reordered = [...segments];
+      const [moved] = reordered.splice(oldIndex, 1);
+      reordered.splice(newIndex, 0, moved);
+
+      // Update currentIndex to follow the segment that was active
+      if (currentIndex === oldIndex) {
+        setCurrentIndex(newIndex);
+      } else if (oldIndex < currentIndex && newIndex >= currentIndex) {
+        setCurrentIndex(currentIndex - 1);
+      } else if (oldIndex > currentIndex && newIndex <= currentIndex) {
+        setCurrentIndex(currentIndex + 1);
+      }
+
+      reorderSegments(reordered.map((s) => s.id));
+    },
+    [segments, currentIndex, reorderSegments]
+  );
 
   // When currentIndex changes during playback, start playing the new segment
   const playingRef = useRef(false);
@@ -316,6 +371,7 @@ export default function ReelBuilderPage() {
   const handleOpenSwap = (segment: ReelSegmentWithVideo) => {
     setSwapSegment(segment);
     setSwapVideoId(segment.video_id);
+    setSwapSearch("");
   };
 
   const handleConfirmSwap = async () => {
@@ -1150,200 +1206,90 @@ export default function ReelBuilderPage() {
         </div>
       </div>
 
-      {/* Segment strip — horizontal scroll (hidden for single-segment reels) */}
+      {/* Segment strip — horizontal scroll */}
       {reel.reel_segments.length === 0 ? (
         <div className="text-center py-8">
           <p className="text-sm text-muted-foreground">
             No segments yet. Delete this reel and create a new one.
           </p>
         </div>
-      ) : reel.reel_segments.length > 1 && (
+      ) : reel.reel_segments.length >= 1 && (
         <div>
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
             Segments
           </p>
-          <div className="flex gap-2 overflow-x-auto py-1 -my-1 pb-2 -mx-4 px-4 snap-x">
-            {reel.reel_segments.map((segment, idx) => {
-              const dur = segment.end_seconds - segment.start_seconds;
-              const maxDur = segment.video.duration_seconds
-                ? Math.round((segment.video.duration_seconds - segment.start_seconds) * 10) / 10
-                : dur;
-              const durOptions: number[] = [];
-              for (let d = 1; d <= Math.floor(maxDur); d++) {
-                durOptions.push(d);
-              }
-              const roundedDur = Math.round(dur * 10) / 10;
-              if (!durOptions.includes(roundedDur) && roundedDur > 0) {
-                durOptions.push(roundedDur);
-                durOptions.sort((a, b) => a - b);
-              }
-
-              const isActive = idx === currentIndex;
-
-              return (
+          <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={segmentIds} strategy={horizontalListSortingStrategy}>
+              <div className="flex gap-2 overflow-x-auto py-1 -my-1 pb-2 -mx-4 px-4 snap-x">
+                {reel.reel_segments.map((segment, idx) => (
+                  <SortableSegmentCard
+                    key={segment.id}
+                    segment={segment}
+                    idx={idx}
+                    isActive={idx === currentIndex}
+                    editingTextSegId={editingTextSegId}
+                    textDraft={textDraft}
+                    findingBestSegId={findingBestSegId}
+                    onJump={() => jumpToSegment(idx)}
+                    onEditText={(segId, text) => { setTextDraft(text); setEditingTextSegId(segId); }}
+                    onEditTextCancel={() => setEditingTextSegId(null)}
+                    onTextChange={setTextDraft}
+                    onTextCommit={(segId, text) => {
+                      updateSegmentText({ segmentId: segId, text });
+                      setEditingTextSegId(null);
+                    }}
+                    onDurationCommit={(segId, videoId, start, end) => {
+                      updateSegment({ segmentId: segId, videoId, startSeconds: start, endSeconds: end });
+                    }}
+                    onSlipEarlier={(seg) => {
+                      const shift = Math.min(0.5, seg.start_seconds);
+                      if (shift > 0) {
+                        updateSegment({
+                          segmentId: seg.id, videoId: seg.video_id,
+                          startSeconds: Math.round((seg.start_seconds - shift) * 10) / 10,
+                          endSeconds: Math.round((seg.end_seconds - shift) * 10) / 10,
+                        });
+                      }
+                    }}
+                    onSlipLater={(seg) => {
+                      const maxEnd = seg.video.duration_seconds ?? 999;
+                      const shift = Math.min(0.5, maxEnd - seg.end_seconds);
+                      if (shift > 0) {
+                        updateSegment({
+                          segmentId: seg.id, videoId: seg.video_id,
+                          startSeconds: Math.round((seg.start_seconds + shift) * 10) / 10,
+                          endSeconds: Math.round((seg.end_seconds + shift) * 10) / 10,
+                        });
+                      }
+                    }}
+                    onFindBest={() => handleFindBest(segment)}
+                    onSwap={() => handleOpenSwap(segment)}
+                    onDelete={() => {
+                      deleteSegment(segment.id).then(() => {
+                        if (currentIndex >= segments.length - 1 && currentIndex > 0) {
+                          setCurrentIndex(currentIndex - 1);
+                        }
+                      });
+                    }}
+                  />
+                ))}
+                {/* Add clip card */}
                 <div
-                  key={segment.id}
-                  className={`shrink-0 w-28 rounded-md border-2 bg-card cursor-pointer transition-colors snap-start ${
-                    isActive ? "border-primary" : "border-border hover:border-primary/50"
-                  }`}
-                  onClick={() => jumpToSegment(idx)}
+                  className="shrink-0 w-28 rounded-md border-2 border-dashed border-muted-foreground/30 bg-card cursor-pointer hover:border-primary/50 transition-colors snap-start flex flex-col items-center justify-center min-h-[140px]"
+                  onClick={() => {
+                    setAddClipVideoId("");
+                    setAddClipDuration("3");
+                    setAddClipText("");
+                    setAddClipSearch("");
+                    setShowAddClip(true);
+                  }}
                 >
-                  {/* Thumbnail */}
-                  <div className="relative aspect-square overflow-hidden rounded-t-md">
-                    <VideoThumbnail
-                      src={`${segment.video.url}#t=${segment.start_seconds}`}
-                      thumbnailUrl={segment.video.thumbnail_url}
-                      className="w-full h-full"
-                      iconSize="sm"
-                    />
-                    <div className="absolute top-1 left-1">
-                      <Badge variant="secondary" className="bg-black/60 text-white text-[9px] border-0 px-1 py-0">
-                        #{segment.section_index + 1}
-                      </Badge>
-                    </div>
-                    <div className="absolute top-1 right-1">
-                      <Badge variant="secondary" className="bg-black/60 text-white text-[9px] border-0 px-1 py-0">
-                        {roundedDur}s
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {/* Content */}
-                  <div className="p-1.5 space-y-1">
-                    {editingTextSegId === segment.id ? (
-                      <textarea
-                        autoFocus
-                        className="text-[10px] font-medium leading-snug w-full bg-muted border rounded px-1.5 py-1 outline-none resize-none"
-                        rows={2}
-                        value={textDraft}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => setTextDraft(e.target.value)}
-                        onBlur={() => {
-                          const trimmed = textDraft.trim();
-                          if (trimmed !== segment.section_text) {
-                            updateSegmentText({ segmentId: segment.id, text: trimmed });
-                          }
-                          setEditingTextSegId(null);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); }
-                          if (e.key === "Escape") setEditingTextSegId(null);
-                        }}
-                      />
-                    ) : (
-                      <p
-                        className="text-[10px] font-medium leading-snug line-clamp-1 cursor-pointer hover:text-primary/80 transition-colors"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setTextDraft(segment.section_text);
-                          setEditingTextSegId(segment.id);
-                        }}
-                      >
-                        {segment.section_text || <span className="text-muted-foreground italic">Add text...</span>}
-                      </p>
-                    )}
-                    <div className="flex gap-0.5 text-[9px]" onClick={(e) => e.stopPropagation()}>
-                      <SegTimeInput
-                        value={Math.round((segment.end_seconds - segment.start_seconds) * 10) / 10}
-                        max={Math.round(((segment.video.duration_seconds ?? 999) - segment.start_seconds) * 10) / 10}
-                        title="Duration (s)"
-                        onCommit={(v) => {
-                          if (v > 0) {
-                            const maxEnd = segment.video.duration_seconds ?? 999;
-                            const newEnd = Math.min(segment.start_seconds + v, maxEnd);
-                            updateSegment({
-                              segmentId: segment.id,
-                              videoId: segment.video_id,
-                              startSeconds: segment.start_seconds,
-                              endSeconds: Math.round(newEnd * 10) / 10,
-                            });
-                          }
-                        }}
-                        suffix="s"
-                      />
-                    </div>
-                    {/* Slip & find best */}
-                    <div className="flex gap-0.5" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-muted-foreground hover:bg-muted transition-colors disabled:opacity-30"
-                        title="Slip earlier"
-                        disabled={segment.start_seconds <= 0}
-                        onClick={() => {
-                          const shift = Math.min(0.5, segment.start_seconds);
-                          if (shift > 0) {
-                            updateSegment({
-                              segmentId: segment.id,
-                              videoId: segment.video_id,
-                              startSeconds: Math.round((segment.start_seconds - shift) * 10) / 10,
-                              endSeconds: Math.round((segment.end_seconds - shift) * 10) / 10,
-                            });
-                          }
-                        }}
-                      >
-                        <CaretLeft className="h-2.5 w-2.5" />
-                      </button>
-                      <button
-                        className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-primary hover:bg-muted transition-colors"
-                        title="AI: find best moment"
-                        disabled={findingBestSegId === segment.id}
-                        onClick={() => handleFindBest(segment)}
-                      >
-                        {findingBestSegId === segment.id ? (
-                          <CircleNotch className="h-2.5 w-2.5 animate-spin" />
-                        ) : (
-                          <Sparkle className="h-2.5 w-2.5" />
-                        )}
-                      </button>
-                      <button
-                        className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-muted-foreground hover:bg-muted transition-colors disabled:opacity-30"
-                        title="Slip later"
-                        disabled={segment.end_seconds >= (segment.video.duration_seconds ?? 999)}
-                        onClick={() => {
-                          const maxEnd = segment.video.duration_seconds ?? 999;
-                          const shift = Math.min(0.5, maxEnd - segment.end_seconds);
-                          if (shift > 0) {
-                            updateSegment({
-                              segmentId: segment.id,
-                              videoId: segment.video_id,
-                              startSeconds: Math.round((segment.start_seconds + shift) * 10) / 10,
-                              endSeconds: Math.round((segment.end_seconds + shift) * 10) / 10,
-                            });
-                          }
-                        }}
-                      >
-                        <CaretRight className="h-2.5 w-2.5" />
-                      </button>
-                    </div>
-                    <div className="flex gap-1">
-                      <button
-                        className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-muted-foreground hover:bg-muted transition-colors"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenSwap(segment);
-                        }}
-                      >
-                        <ArrowsClockwise className="h-2.5 w-2.5" />
-                      </button>
-                      <button
-                        className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-destructive hover:bg-muted transition-colors"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteSegment(segment.id).then(() => {
-                            if (currentIndex >= segments.length - 1 && currentIndex > 0) {
-                              setCurrentIndex(currentIndex - 1);
-                            }
-                          });
-                        }}
-                        title="Delete segment"
-                      >
-                        <Trash className="h-2.5 w-2.5" />
-                      </button>
-                    </div>
-                  </div>
+                  <Plus className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-[10px] text-muted-foreground mt-1">Add Clip</span>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            </SortableContext>
+          </DndContext>
         </div>
       )}
 
@@ -1397,7 +1343,7 @@ export default function ReelBuilderPage() {
         open={swapSegment !== null}
         onOpenChange={(open) => !open && setSwapSegment(null)}
       >
-        <DialogContent>
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Swap Clip</DialogTitle>
             <DialogDescription>
@@ -1410,22 +1356,50 @@ export default function ReelBuilderPage() {
             {/* Video selection */}
             <div className="space-y-2">
               <Label>Select Video</Label>
-              <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+              <Input
+                value={swapSearch}
+                onChange={(e) => setSwapSearch(e.target.value)}
+                placeholder="Search clips by mood, scene, color..."
+                className="h-8 text-sm"
+              />
+              <div className="max-h-[50vh] overflow-y-auto p-0.5 -m-0.5">
+                <div className="grid grid-cols-4 gap-2">
                 {(() => {
                   const usedVideoIds = new Set(
                     segments
                       .filter((s) => s.id !== swapSegment?.id)
                       .map((s) => s.video_id)
                   );
+                  const query = swapSearch.toLowerCase().trim();
                   return videos
-                    .filter((v: Video) => !usedVideoIds.has(v.id))
+                    .filter((v: Video) => {
+                      if (usedVideoIds.has(v.id)) return false;
+                      if (!query) return true;
+                      const a = v.analysis;
+                      if (!a) return v.filename.toLowerCase().includes(query);
+                      const searchable = [
+                        v.filename,
+                        a.mood,
+                        a.energy,
+                        a.visuals,
+                        a.summary,
+                        a.pacing,
+                        a.dominantMotion,
+                        a.structure,
+                        a.audioNotes,
+                        ...(a.sceneTags ?? []),
+                        ...(a.colorPalette ?? []),
+                        ...(a.shotTypes ?? []),
+                      ].filter(Boolean).join(" ").toLowerCase();
+                      return searchable.includes(query);
+                    })
                     .map((v: Video) => (
                   <div
                     key={v.id}
-                    className={`relative rounded-lg border overflow-hidden cursor-pointer transition-colors ${
+                    className={`relative rounded-lg overflow-hidden cursor-pointer transition-all ${
                       swapVideoId === v.id
-                        ? "ring-2 ring-primary"
-                        : "hover:border-primary/50"
+                        ? "ring-2 ring-primary ring-offset-1"
+                        : "border hover:border-primary/50"
                     }`}
                     onClick={() => {
                       setSwapVideoId(v.id);
@@ -1445,6 +1419,7 @@ export default function ReelBuilderPage() {
                   </div>
                     ));
                 })()}
+                </div>
               </div>
             </div>
 
@@ -1480,6 +1455,212 @@ export default function ReelBuilderPage() {
               disabled={!swapVideoId || isUpdating}
             >
               {isUpdating ? "Updating..." : "Confirm Swap"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add clip dialog */}
+      <Dialog
+        open={showAddClip}
+        onOpenChange={(open) => !open && setShowAddClip(false)}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Add Clip</DialogTitle>
+            <DialogDescription>
+              Choose a video to add as a new segment at the end of your reel.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Select Video</Label>
+              <Input
+                value={addClipSearch}
+                onChange={(e) => setAddClipSearch(e.target.value)}
+                placeholder="Search clips by mood, scene, color..."
+                className="h-8 text-sm"
+              />
+              <div className="max-h-[50vh] overflow-y-auto p-0.5 -m-0.5">
+                <div className="grid grid-cols-4 gap-2">
+                {(() => {
+                  const usedVideoIds = new Set(segments.map((s) => s.video_id));
+                  const query = addClipSearch.toLowerCase().trim();
+                  return videos
+                    .filter((v: Video) => {
+                      if (usedVideoIds.has(v.id)) return false;
+                      if (!query) return true;
+                      const a = v.analysis;
+                      if (!a) return v.filename.toLowerCase().includes(query);
+                      const searchable = [
+                        v.filename,
+                        a.mood,
+                        a.energy,
+                        a.visuals,
+                        a.summary,
+                        a.pacing,
+                        a.dominantMotion,
+                        a.structure,
+                        a.audioNotes,
+                        ...(a.sceneTags ?? []),
+                        ...(a.colorPalette ?? []),
+                        ...(a.shotTypes ?? []),
+                      ].filter(Boolean).join(" ").toLowerCase();
+                      return searchable.includes(query);
+                    })
+                    .map((v: Video) => (
+                      <div
+                        key={v.id}
+                        className={`relative rounded-lg overflow-hidden cursor-pointer transition-all ${
+                          addClipVideoId === v.id
+                            ? "ring-2 ring-primary ring-offset-1"
+                            : "border hover:border-primary/50"
+                        }`}
+                        onClick={() => setAddClipVideoId(v.id)}
+                      >
+                        <VideoThumbnail
+                          src={v.url}
+                          thumbnailUrl={v.thumbnail_url}
+                          className="w-full aspect-[9/16]"
+                          iconSize="sm"
+                        />
+                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-1 pb-0.5 pt-3">
+                          <p className="text-[9px] text-white truncate">
+                            {v.filename}
+                          </p>
+                        </div>
+                      </div>
+                    ));
+                })()}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Duration (s)</Label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  max={(() => {
+                    const v = videos.find((v) => v.id === addClipVideoId);
+                    return v?.duration_seconds ?? 30;
+                  })()}
+                  value={addClipDuration}
+                  onChange={(e) => setAddClipDuration(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Text overlay</Label>
+                <Input
+                  value={addClipText}
+                  onChange={(e) => setAddClipText(e.target.value)}
+                  placeholder="Optional"
+                  className="h-8 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                {addClipVideoId
+                  ? `${videos.find((v) => v.id === addClipVideoId)?.filename ?? "Selected"}`
+                  : "No video selected"}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                disabled={addClipSuggesting}
+                onClick={async () => {
+                  setAddClipSuggesting(true);
+                  try {
+                    const dur = parseFloat(addClipDuration) || 3;
+                    const lastSeg = segments[segments.length - 1];
+                    const lastAnalysis = lastSeg
+                      ? (videos.find((v) => v.id === lastSeg.video_id)?.analysis as Record<string, unknown> | null)
+                      : null;
+
+                    const template = {
+                      totalDurationSeconds: dur,
+                      segmentCount: 1,
+                      segments: [{
+                        index: 0,
+                        startSeconds: 0,
+                        endSeconds: dur,
+                        durationSeconds: dur,
+                        textOverlay: addClipText || null,
+                        mood: (lastAnalysis?.mood as string) || "neutral",
+                        energy: (lastAnalysis?.energy as string) || "medium",
+                        visualDescription: "",
+                      }],
+                      overallMood: (lastAnalysis?.mood as string) || "neutral",
+                      overallEnergy: (lastAnalysis?.energy as string) || "medium",
+                      overallPacing: "moderate",
+                      visualStyleNotes: "",
+                      textOverlayStyle: null,
+                    };
+
+                    const usedVideoIds = new Set(segments.map((s) => s.video_id));
+                    const availableVideos = videos
+                      .filter((v) => !usedVideoIds.has(v.id) && v.analysis)
+                      .map((v) => ({
+                        id: v.id,
+                        filename: v.filename,
+                        duration_seconds: v.duration_seconds,
+                        analysis: v.analysis,
+                      }));
+
+                    if (availableVideos.length === 0) return;
+
+                    const { data, error } = await supabase.functions.invoke("clone-reel-segments", {
+                      body: { template, videos: availableVideos },
+                    });
+
+                    if (!error && data?.segments?.[0]) {
+                      setAddClipVideoId(data.segments[0].videoId);
+                    }
+                  } catch (err) {
+                    console.error("Suggest add clip failed:", err);
+                  } finally {
+                    setAddClipSuggesting(false);
+                  }
+                }}
+              >
+                {addClipSuggesting ? (
+                  <>
+                    <CircleNotch className="h-3.5 w-3.5 mr-1 animate-spin" /> Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Sparkle className="h-3.5 w-3.5 mr-1" /> Suggest
+                  </>
+                )}
+              </Button>
+            </div>
+
+            <Button
+              className="w-full"
+              onClick={async () => {
+                if (!addClipVideoId) return;
+                const dur = parseFloat(addClipDuration) || 3;
+                const selectedVideo = videos.find((v) => v.id === addClipVideoId);
+                const maxEnd = selectedVideo?.duration_seconds ?? dur;
+                const endSeconds = Math.min(dur, maxEnd);
+                await addSegment({
+                  videoId: addClipVideoId,
+                  sectionText: addClipText.trim(),
+                  startSeconds: 0,
+                  endSeconds: Math.round(endSeconds * 10) / 10,
+                });
+                setShowAddClip(false);
+              }}
+              disabled={!addClipVideoId || isAdding}
+            >
+              {isAdding ? "Adding..." : "Add Clip"}
             </Button>
           </div>
         </DialogContent>
@@ -1606,6 +1787,194 @@ function SegTimeInput({
           {suffix}
         </span>
       )}
+    </div>
+  );
+}
+
+function SortableSegmentCard({
+  segment,
+  idx,
+  isActive,
+  editingTextSegId,
+  textDraft,
+  findingBestSegId,
+  onJump,
+  onEditText,
+  onEditTextCancel,
+  onTextChange,
+  onTextCommit,
+  onDurationCommit,
+  onSlipEarlier,
+  onSlipLater,
+  onFindBest,
+  onSwap,
+  onDelete,
+}: {
+  segment: ReelSegmentWithVideo;
+  idx: number;
+  isActive: boolean;
+  editingTextSegId: string | null;
+  textDraft: string;
+  findingBestSegId: string | null;
+  onJump: () => void;
+  onEditText: (segId: string, text: string) => void;
+  onEditTextCancel: () => void;
+  onTextChange: (text: string) => void;
+  onTextCommit: (segId: string, text: string) => void;
+  onDurationCommit: (segId: string, videoId: string, start: number, end: number) => void;
+  onSlipEarlier: (seg: ReelSegmentWithVideo) => void;
+  onSlipLater: (seg: ReelSegmentWithVideo) => void;
+  onFindBest: () => void;
+  onSwap: () => void;
+  onDelete: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: segment.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  const roundedDur = Math.round((segment.end_seconds - segment.start_seconds) * 10) / 10;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`shrink-0 w-28 rounded-md border-2 bg-card cursor-pointer transition-colors snap-start ${
+        isActive ? "border-primary" : "border-border hover:border-primary/50"
+      }`}
+      onClick={onJump}
+    >
+      {/* Thumbnail — drag handle */}
+      <div
+        className="relative aspect-square overflow-hidden rounded-t-md touch-none"
+        {...attributes}
+        {...listeners}
+      >
+        <VideoThumbnail
+          src={`${segment.video.url}#t=${segment.start_seconds}`}
+          thumbnailUrl={segment.video.thumbnail_url}
+          className="w-full h-full"
+          iconSize="sm"
+        />
+        <div className="absolute top-1 left-1">
+          <Badge variant="secondary" className="bg-black/60 text-white text-[9px] border-0 px-1 py-0">
+            #{idx + 1}
+          </Badge>
+        </div>
+        <div className="absolute top-1 right-1">
+          <Badge variant="secondary" className="bg-black/60 text-white text-[9px] border-0 px-1 py-0">
+            {roundedDur}s
+          </Badge>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="p-1.5 space-y-1">
+        {editingTextSegId === segment.id ? (
+          <textarea
+            autoFocus
+            className="text-[10px] font-medium leading-snug w-full bg-muted border rounded px-1.5 py-1 outline-none resize-none"
+            rows={2}
+            value={textDraft}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => onTextChange(e.target.value)}
+            onBlur={() => {
+              const trimmed = textDraft.trim();
+              if (trimmed !== segment.section_text) {
+                onTextCommit(segment.id, trimmed);
+              } else {
+                onEditTextCancel();
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); }
+              if (e.key === "Escape") onEditTextCancel();
+            }}
+          />
+        ) : (
+          <p
+            className="text-[10px] font-medium leading-snug line-clamp-1 cursor-pointer hover:text-primary/80 transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEditText(segment.id, segment.section_text);
+            }}
+          >
+            {segment.section_text || <span className="text-muted-foreground italic">Add text...</span>}
+          </p>
+        )}
+        <div className="flex gap-0.5 text-[9px]" onClick={(e) => e.stopPropagation()}>
+          <SegTimeInput
+            value={roundedDur}
+            max={Math.round(((segment.video.duration_seconds ?? 999) - segment.start_seconds) * 10) / 10}
+            title="Duration (s)"
+            onCommit={(v) => {
+              if (v > 0) {
+                const maxEnd = segment.video.duration_seconds ?? 999;
+                const newEnd = Math.min(segment.start_seconds + v, maxEnd);
+                onDurationCommit(segment.id, segment.video_id, segment.start_seconds, Math.round(newEnd * 10) / 10);
+              }
+            }}
+            suffix="s"
+          />
+        </div>
+        {/* Slip & find best */}
+        <div className="flex gap-0.5" onClick={(e) => e.stopPropagation()}>
+          <button
+            className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-muted-foreground hover:bg-muted transition-colors disabled:opacity-30"
+            title="Slip earlier"
+            disabled={segment.start_seconds <= 0}
+            onClick={() => onSlipEarlier(segment)}
+          >
+            <CaretLeft className="h-2.5 w-2.5" />
+          </button>
+          <button
+            className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-primary hover:bg-muted transition-colors"
+            title="AI: find best moment"
+            disabled={findingBestSegId === segment.id}
+            onClick={onFindBest}
+          >
+            {findingBestSegId === segment.id ? (
+              <CircleNotch className="h-2.5 w-2.5 animate-spin" />
+            ) : (
+              <Sparkle className="h-2.5 w-2.5" />
+            )}
+          </button>
+          <button
+            className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-muted-foreground hover:bg-muted transition-colors disabled:opacity-30"
+            title="Slip later"
+            disabled={segment.end_seconds >= (segment.video.duration_seconds ?? 999)}
+            onClick={() => onSlipLater(segment)}
+          >
+            <CaretRight className="h-2.5 w-2.5" />
+          </button>
+        </div>
+        <div className="flex gap-1">
+          <button
+            className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-muted-foreground hover:bg-muted transition-colors"
+            onClick={(e) => { e.stopPropagation(); onSwap(); }}
+          >
+            <ArrowsClockwise className="h-2.5 w-2.5" />
+          </button>
+          <button
+            className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-destructive hover:bg-muted transition-colors"
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            title="Delete segment"
+          >
+            <Trash className="h-2.5 w-2.5" />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
