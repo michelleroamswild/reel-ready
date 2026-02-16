@@ -12,17 +12,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { PencilSimple, Trash, Sparkle, FilmStrip } from "@phosphor-icons/react";
+import { PencilSimple, Trash, FilmStrip } from "@phosphor-icons/react";
 
 interface Props {
   phrase: Phrase;
   onEdit: (phrase: Phrase) => void;
   onDelete: (id: string) => void;
-  onFindMatches?: (phrase: Phrase) => void;
   onBuildReel?: (phrase: Phrase) => void;
 }
 
-export function PhraseCard({ phrase, onEdit, onDelete, onFindMatches, onBuildReel }: Props) {
+export function PhraseCard({ phrase, onEdit, onDelete, onBuildReel }: Props) {
   const [showDelete, setShowDelete] = useState(false);
 
   return (
@@ -45,11 +44,6 @@ export function PhraseCard({ phrase, onEdit, onDelete, onFindMatches, onBuildRee
           {onBuildReel && (
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onBuildReel(phrase)} title="Build Reel">
               <FilmStrip className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          {onFindMatches && (
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onFindMatches(phrase)} title="Find Matches">
-              <Sparkle className="h-3.5 w-3.5" />
             </Button>
           )}
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(phrase)} title="Edit">
