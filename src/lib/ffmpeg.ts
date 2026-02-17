@@ -49,6 +49,7 @@ export async function exportReel(
 
   onProgress({ stage: "loading", stageProgress: 0, overallProgress: 0 });
 
+  // Send the raw percentage — the worker scales this relative to video width
   const body = {
     segments: segments
       .filter((seg) => seg.end_seconds > seg.start_seconds)
@@ -60,25 +61,27 @@ export async function exportReel(
       })),
     burnText: options.burnText,
     textPosition: options.textPosition ?? "bottom",
-    textSize: Math.round(((options.textSize ?? 4.5) / 100) * 1080),
-    textBorder: options.textBorder ?? "outline",
+    textSize: options.textSize ?? 4.5,
+    textBorder: options.textBorder ?? "shadow",
     textBorderColor: options.textBorderColor ?? "black",
     textColor: options.textColor ?? "white",
   };
 
   // Estimate total processing time: ~8s per segment for download + encode
-  const estimatedMs = segments.length * 8000 + 3000;
+  let estimatedMs = segments.length * 8000 + 3000;
 
   // Simulate smooth progress while waiting for the server
   let currentProgress = 0.05;
   const startTime = Date.now();
   const ticker = setInterval(() => {
     const elapsed = Date.now() - startTime;
-    // Ease toward 85% over the estimated time, slowing down as it approaches
-    const target = Math.min(0.85, (elapsed / estimatedMs) * 0.85);
-    currentProgress += (target - currentProgress) * 0.15;
+    // If taking longer than expected, extend the estimate so progress keeps moving
+    if (elapsed > estimatedMs * 0.9) {
+      estimatedMs = elapsed + 5000;
+    }
+    const target = Math.min(0.90, (elapsed / estimatedMs) * 0.90);
+    currentProgress += (target - currentProgress) * 0.1;
 
-    // Figure out which segment we're probably on
     const segEstimate = Math.min(
       segments.length,
       Math.floor((elapsed / estimatedMs) * segments.length) + 1

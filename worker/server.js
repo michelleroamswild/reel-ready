@@ -42,7 +42,7 @@ app.post("/export-reel", async (req, res) => {
     return res.status(401).json({ error: "Invalid API key" });
   }
 
-  const { segments, burnText, textPosition, textSize, textBorder, textBorderColor } = req.body;
+  const { segments, burnText, textPosition, textSize, textBorder, textBorderColor, textColor, fontColor } = req.body;
 
   if (!segments?.length) {
     return res.status(400).json({ error: "No segments provided" });
@@ -69,7 +69,7 @@ app.post("/export-reel", async (req, res) => {
 
     // 2. Run FFmpeg
     if (burnText) {
-      await exportWithText(segments, inputPaths, outputPath, textPosition, textSize, textBorder, textBorderColor);
+      await exportWithText(segments, inputPaths, outputPath, textPosition, textSize, textBorder, textBorderColor, textColor || fontColor);
     } else {
       await exportCopyMode(segments, inputPaths, outputPath, workDir);
     }
@@ -99,19 +99,31 @@ app.post("/export-reel", async (req, res) => {
 /* ------------------------------------------------------------------ */
 
 async function exportCopyMode(segments, inputPaths, outputPath, workDir) {
-  // Trim each segment with -c copy
+  const WIDTH = 1080;
+  const HEIGHT = 1920;
+
+  // Trim each segment using video filters for frame-accurate cuts with clean timestamps
   const trimmedPaths = [];
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
     const trimmedPath = join(workDir, `seg${i}.mp4`);
 
+    // Use trim filter + setpts to guarantee timestamps start at 0 (no black frame)
+    const vf = `trim=start=${seg.startSeconds}:end=${seg.endSeconds},setpts=PTS-STARTPTS,scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,pad=${WIDTH}:${HEIGHT}:(ow-iw)/2:(oh-ih)/2:black`;
+    const af = `atrim=start=${seg.startSeconds}:end=${seg.endSeconds},asetpts=PTS-STARTPTS`;
+
     await runFFmpeg([
       "-y",
-      "-ss", String(seg.startSeconds),
-      "-to", String(seg.endSeconds),
       "-i", inputPaths[i],
-      "-c", "copy",
-      "-avoid_negative_ts", "make_zero",
+      "-vf", vf,
+      "-af", af,
+      "-c:v", "libx264",
+      "-preset", "ultrafast",
+      "-crf", "18",
+      "-r", "30",
+      "-pix_fmt", "yuv420p",
+      "-c:a", "aac",
+      "-b:a", "128k",
       trimmedPath,
     ]);
 
@@ -130,6 +142,7 @@ async function exportCopyMode(segments, inputPaths, outputPath, workDir) {
     "-safe", "0",
     "-i", listPath,
     "-c", "copy",
+    "-movflags", "+faststart",
     outputPath,
   ]);
 }
@@ -138,7 +151,7 @@ async function exportCopyMode(segments, inputPaths, outputPath, workDir) {
 /*  FFmpeg: re-encode with text overlay                                */
 /* ------------------------------------------------------------------ */
 
-async function exportWithText(segments, inputPaths, outputPath, textPosition, textSize, textBorder, textBorderColor) {
+async function exportWithText(segments, inputPaths, outputPath, textPosition, textSize, textBorder, textBorderColor, textColor) {
   const WIDTH = 1080;
   const HEIGHT = 1920;
 
@@ -151,17 +164,32 @@ async function exportWithText(segments, inputPaths, outputPath, textPosition, te
   // Font — Liberation Sans Bold is a clean sans-serif (like Arial/Helvetica)
   const fontFile = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf";
 
-  // Font size — preview px * 4 for 1080p export. Supports legacy string names too.
+  // Font size — supports percentage of width (new) and legacy px values
   const fontSizeMap = { small: 36, medium: 72, large: 96 };
-  const fontSize = typeof textSize === "number"
-    ? textSize * 4
-    : (fontSizeMap[textSize] || (Number(textSize) ? Number(textSize) * 4 : 72));
+  let fontSize;
+  if (typeof textSize === "string" && fontSizeMap[textSize]) {
+    fontSize = fontSizeMap[textSize];
+  } else {
+    const num = Number(textSize);
+    if (num <= 8) {
+      // New percentage-based: convert to pixels (percentage of 1080px width)
+      fontSize = Math.round((num / 100) * WIDTH);
+    } else {
+      // Legacy px-based values (9–24): multiply by 4 for 1080p
+      fontSize = num * 4;
+    }
+  }
+  if (!fontSize || fontSize < 20) fontSize = 72;
+
+  // Font color — supports hex (#ffffff), named colors (white, black), default white
+  const fontColor = (textColor || "white").replace(/^#/, "0x");
 
   // Border style params for drawtext — scaled to match preview at ~4x
   const borderColor = textBorderColor || "black";
   let borderParams;
   if (textBorder === "shadow") {
-    borderParams = "shadowx=4:shadowy=4:shadowcolor=black@0.5";
+    // Centered glow (no offset) — use multiple shadow layers
+    borderParams = "shadowx=0:shadowy=0:shadowcolor=black@0.7";
   } else if (textBorder === "box") {
     borderParams = `box=1:boxborderw=16:boxcolor=${borderColor}@0.35`;
   } else {
@@ -178,8 +206,9 @@ async function exportWithText(segments, inputPaths, outputPath, textPosition, te
     const processedPath = join(workDir, `text${i}.mp4`);
     console.log(`[export] Processing segment ${i} with text overlay`);
 
-    // Build video filter: scale + pad + optional drawtext
-    let vf = `scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,pad=${WIDTH}:${HEIGHT}:(ow-iw)/2:(oh-ih)/2:black`;
+    // Build video filter: trim + reset PTS + scale + pad + optional drawtext
+    let vf = `trim=start=${seg.startSeconds}:end=${seg.endSeconds},setpts=PTS-STARTPTS,scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,pad=${WIDTH}:${HEIGHT}:(ow-iw)/2:(oh-ih)/2:black`;
+    const af = `atrim=start=${seg.startSeconds}:end=${seg.endSeconds},asetpts=PTS-STARTPTS`;
 
     const text = seg.sectionText || "";
     if (text) {
@@ -188,20 +217,21 @@ async function exportWithText(segments, inputPaths, outputPath, textPosition, te
         .replace(/'/g, "'\\\\\\''")
         .replace(/:/g, "\\:")
         .replace(/%/g, "%%");
-      vf += `,drawtext=text='${escapedText}':fontfile=${fontFile}:fontsize=${fontSize}:fontcolor=white:x=(w-text_w)/2:y=${textY}:${borderParams}`;
+      vf += `,drawtext=text='${escapedText}':fontfile=${fontFile}:fontsize=${fontSize}:fontcolor=${fontColor}:x=(w-text_w)/2:y=${textY}:${borderParams}`;
     }
 
     await runFFmpeg([
       "-y",
-      "-ss", String(seg.startSeconds),
-      "-to", String(seg.endSeconds),
       "-i", inputPaths[i],
       "-vf", vf,
+      "-af", af,
       "-c:v", "libx264",
       "-preset", "ultrafast",
       "-crf", "23",
       "-r", "30",
       "-pix_fmt", "yuv420p",
+      "-c:a", "aac",
+      "-b:a", "128k",
       processedPath,
     ]);
 

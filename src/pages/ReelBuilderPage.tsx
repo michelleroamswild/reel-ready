@@ -220,11 +220,11 @@ export default function ReelBuilderPage() {
     const seg = segments[currentIndex];
     if (!video || !seg) return;
 
-    // Seek past start to skip black intro frames
-    video.currentTime = Math.min(seg.start_seconds + 1, seg.end_seconds - 0.1);
+    // Seek slightly past start to skip any black intro frame
+    const safeStart = Math.min(seg.start_seconds + 0.1, seg.end_seconds - 0.05);
+    video.currentTime = safeStart;
 
     if (playingRef.current) {
-      video.currentTime = seg.start_seconds;
       video.play().catch(() => setIsPlaying(false));
     } else {
       // On mobile, briefly play+pause to force a frame to render
