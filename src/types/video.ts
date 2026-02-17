@@ -14,6 +14,13 @@ export interface VideoAnalysis {
   dominantMotion: string;   // e.g. "static", "slow pan", "fast action"
   structure: string;        // e.g. "steady", "builds intensity", "peaks then calms"
   audioNotes: string;       // e.g. "no audio", "ambient sounds", "music", "speech"
+  textOverlays?: string[];  // creator text overlays visible in the video
+  segments?: {
+    startSeconds: number;
+    endSeconds: number;
+    description: string;
+    textOnScreen: string;
+  }[];
 }
 
 export interface Video {

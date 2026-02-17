@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,13 +10,14 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Sparkle, Copy, Check, Plus, FilmStrip } from "@phosphor-icons/react";
+import { Sparkle, Copy, Check, Plus, FilmStrip, Crosshair } from "@phosphor-icons/react";
 import type { VideoAnalysis } from "@/types/video";
 
 interface TextSuggestion {
   text: string;
   category: string;
   confidence: number;
+  grounded?: boolean;
 }
 
 type Step = "configure" | "loading" | "results";
@@ -25,6 +26,16 @@ const LENGTH_OPTIONS = [
   { value: "short", label: "Short", description: "Punchy, 2-5 words" },
   { value: "medium", label: "Medium", description: "5-8 words" },
   { value: "long", label: "Long", description: "Short sentences, max 8 words" },
+];
+
+const STYLE_OPTIONS = [
+  { value: "auto", label: "Auto" },
+  { value: "witty", label: "Witty" },
+  { value: "poetic", label: "Poetic" },
+  { value: "bold", label: "Bold" },
+  { value: "minimal", label: "Minimal" },
+  { value: "storytelling", label: "Story" },
+  { value: "edgy", label: "Edgy" },
 ];
 
 interface Props {
@@ -46,6 +57,7 @@ export function SuggestTextDialog({
 }: Props) {
   const [step, setStep] = useState<Step>("configure");
   const [length, setLength] = useState("short");
+  const [style, setStyle] = useState("auto");
   const [suggestions, setSuggestions] = useState<TextSuggestion[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
@@ -53,7 +65,10 @@ export function SuggestTextDialog({
   const [reelCreatedIndices, setReelCreatedIndices] = useState<Set<number>>(new Set());
   const [showAll, setShowAll] = useState(false);
 
-  const INITIAL_COUNT = 3;
+  // Track previous suggestions for anti-repetition across regenerations
+  const previousSuggestionsRef = useRef<string[]>([]);
+
+  const INITIAL_COUNT = 4;
 
   useEffect(() => {
     if (!open) {
@@ -64,6 +79,7 @@ export function SuggestTextDialog({
       setSavedIndices(new Set());
       setReelCreatedIndices(new Set());
       setShowAll(false);
+      previousSuggestionsRef.current = [];
     }
   }, [open]);
 
@@ -73,11 +89,32 @@ export function SuggestTextDialog({
     try {
       const { data, error: fnError } = await supabase.functions.invoke(
         "suggest-text",
-        { body: { analysis, filename, length } }
+        {
+          body: {
+            analysis,
+            filename,
+            length,
+            style,
+            previousSuggestions: previousSuggestionsRef.current,
+          },
+        }
       );
       if (fnError) throw fnError;
       if (data.error) throw new Error(data.error);
+
+      // Accumulate previous suggestions for anti-repetition
+      if (suggestions.length > 0) {
+        previousSuggestionsRef.current = [
+          ...previousSuggestionsRef.current,
+          ...suggestions.map((s) => s.text),
+        ];
+      }
+
       setSuggestions(data.suggestions);
+      setCopiedIndex(null);
+      setSavedIndices(new Set());
+      setReelCreatedIndices(new Set());
+      setShowAll(false);
       setStep("results");
     } catch (err) {
       setError(
@@ -123,6 +160,23 @@ export function SuggestTextDialog({
             </DialogHeader>
 
             <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Style</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {STYLE_OPTIONS.map((opt) => (
+                    <Button
+                      key={opt.value}
+                      variant={style === opt.value ? "default" : "outline"}
+                      size="sm"
+                      className="h-7 text-xs px-2.5"
+                      onClick={() => setStyle(opt.value)}
+                    >
+                      {opt.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label>Length</Label>
                 <div className="flex gap-2">
@@ -203,6 +257,9 @@ export function SuggestTextDialog({
                         <span className={`text-xs ${confidenceColor(s.confidence)}`}>
                           {confidenceLabel(s.confidence)}
                         </span>
+                        {s.grounded && (
+                          <Crosshair className="h-3 w-3 text-muted-foreground" title="Specific to this clip" />
+                        )}
                       </div>
                       <div className="flex gap-1">
                         <Button
