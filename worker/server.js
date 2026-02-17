@@ -99,19 +99,31 @@ app.post("/export-reel", async (req, res) => {
 /* ------------------------------------------------------------------ */
 
 async function exportCopyMode(segments, inputPaths, outputPath, workDir) {
-  // Trim each segment with -c copy
+  const WIDTH = 1080;
+  const HEIGHT = 1920;
+
+  // Trim each segment using video filters for frame-accurate cuts with clean timestamps
   const trimmedPaths = [];
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
     const trimmedPath = join(workDir, `seg${i}.mp4`);
 
+    // Use trim filter + setpts to guarantee timestamps start at 0 (no black frame)
+    const vf = `trim=start=${seg.startSeconds}:end=${seg.endSeconds},setpts=PTS-STARTPTS,scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,pad=${WIDTH}:${HEIGHT}:(ow-iw)/2:(oh-ih)/2:black`;
+    const af = `atrim=start=${seg.startSeconds}:end=${seg.endSeconds},asetpts=PTS-STARTPTS`;
+
     await runFFmpeg([
       "-y",
-      "-ss", String(seg.startSeconds),
-      "-to", String(seg.endSeconds),
       "-i", inputPaths[i],
-      "-c", "copy",
-      "-avoid_negative_ts", "make_zero",
+      "-vf", vf,
+      "-af", af,
+      "-c:v", "libx264",
+      "-preset", "ultrafast",
+      "-crf", "18",
+      "-r", "30",
+      "-pix_fmt", "yuv420p",
+      "-c:a", "aac",
+      "-b:a", "128k",
       trimmedPath,
     ]);
 
@@ -130,6 +142,7 @@ async function exportCopyMode(segments, inputPaths, outputPath, workDir) {
     "-safe", "0",
     "-i", listPath,
     "-c", "copy",
+    "-movflags", "+faststart",
     outputPath,
   ]);
 }
@@ -193,8 +206,9 @@ async function exportWithText(segments, inputPaths, outputPath, textPosition, te
     const processedPath = join(workDir, `text${i}.mp4`);
     console.log(`[export] Processing segment ${i} with text overlay`);
 
-    // Build video filter: scale + pad + optional drawtext
-    let vf = `scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,pad=${WIDTH}:${HEIGHT}:(ow-iw)/2:(oh-ih)/2:black`;
+    // Build video filter: trim + reset PTS + scale + pad + optional drawtext
+    let vf = `trim=start=${seg.startSeconds}:end=${seg.endSeconds},setpts=PTS-STARTPTS,scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,pad=${WIDTH}:${HEIGHT}:(ow-iw)/2:(oh-ih)/2:black`;
+    const af = `atrim=start=${seg.startSeconds}:end=${seg.endSeconds},asetpts=PTS-STARTPTS`;
 
     const text = seg.sectionText || "";
     if (text) {
@@ -208,15 +222,16 @@ async function exportWithText(segments, inputPaths, outputPath, textPosition, te
 
     await runFFmpeg([
       "-y",
-      "-ss", String(seg.startSeconds),
-      "-to", String(seg.endSeconds),
       "-i", inputPaths[i],
       "-vf", vf,
+      "-af", af,
       "-c:v", "libx264",
       "-preset", "ultrafast",
       "-crf", "23",
       "-r", "30",
       "-pix_fmt", "yuv420p",
+      "-c:a", "aac",
+      "-b:a", "128k",
       processedPath,
     ]);
 
