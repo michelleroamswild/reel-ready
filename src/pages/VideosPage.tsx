@@ -20,7 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { FilmStrip, UploadSimple, Trash, ArrowsClockwise, Sparkle, ArrowClockwise, Faders, VideoCamera, X, CheckCircle } from "@phosphor-icons/react";
+import { FilmStrip, UploadSimple, Trash, ArrowsClockwise, Sparkle, ArrowClockwise, Faders, VideoCamera, X, CheckCircle, CircleNotch } from "@phosphor-icons/react";
 import { VideoThumbnail } from "@/components/VideoThumbnail";
 import { VideoFilterSheet, emptyFilters, type VideoFilters } from "@/components/VideoFilterSheet";
 import type { Video } from "@/types/video";
@@ -37,7 +37,7 @@ interface UploadComplete {
 
 export default function VideosPage() {
   const navigate = useNavigate();
-  const { videos, isLoading, uploadVideo, isUploading, analyzeVideo, isAnalyzing, deleteVideo } = useVideos();
+  const { videos, isLoading, uploadVideo, isUploading, analyzeVideo, isAnalyzing, deleteVideo, deletingVideoId } = useVideos();
   const [bulkProgress, setBulkProgress] = useState<UploadProgress[]>([]);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadFilename, setUploadFilename] = useState<string | null>(null);
@@ -385,6 +385,12 @@ export default function VideosPage() {
                   <Badge variant="secondary" className="bg-black/60 text-white text-[9px] border-0 px-1 py-0">
                     Edit
                   </Badge>
+                </div>
+              )}
+              {/* Deleting overlay */}
+              {deletingVideoId === v.id && (
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10">
+                  <CircleNotch className="h-6 w-6 text-white animate-spin" />
                 </div>
               )}
               {/* Filename + size */}
