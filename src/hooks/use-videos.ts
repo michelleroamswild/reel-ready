@@ -17,16 +17,11 @@ async function fetchVideos(): Promise<Video[]> {
 }
 
 async function generateThumbnail(videoId: string, videoUrl: string): Promise<string | null> {
-  try {
-    const { data, error } = await supabase.functions.invoke("generate-thumbnail", {
-      body: { videoId, videoUrl },
-    });
-    if (error) throw error;
-    return data?.thumbnailUrl ?? null;
-  } catch (err) {
-    console.error("Thumbnail generation failed:", err);
-    return null;
-  }
+  const { data, error } = await supabase.functions.invoke("generate-thumbnail", {
+    body: { videoId, videoUrl },
+  });
+  if (error) throw error;
+  return data?.thumbnailUrl ?? null;
 }
 
 async function analyzeVideoWithAi(
@@ -157,7 +152,12 @@ export function useVideos() {
     (async () => {
       for (const v of missing) {
         backfilledIds.current.add(v.id);
-        await generateThumbnail(v.id, v.url);
+        try {
+          await generateThumbnail(v.id, v.url);
+        } catch (err) {
+          console.warn("Thumbnail backfill stopped:", err);
+          break;
+        }
       }
       backfillingRef.current = false;
       queryClient.invalidateQueries({ queryKey: VIDEOS_KEY });
@@ -190,6 +190,7 @@ export function useVideos() {
     analyzeVideo: (video: Video) => analyzeMutation.mutate(video),
     isAnalyzing: analyzeMutation.isPending,
     deleteVideo: (id: string) => deleteMutation.mutate(id),
+    deletingVideoId: deleteMutation.isPending ? (deleteMutation.variables as string | undefined) ?? null : null,
     generateThumbnail: (video: Video) => thumbnailMutation.mutate(video),
     updateVideo: updateVideoMutation.mutate,
   };

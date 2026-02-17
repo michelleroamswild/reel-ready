@@ -3,6 +3,7 @@ import type { Video } from "@/types/video";
 import { Badge } from "@/components/ui/badge";
 import { ArrowsClockwise } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { VideoThumbnail } from "@/components/VideoThumbnail";
 
 interface Props {
   suggestion: AiSuggestion;
@@ -22,10 +23,10 @@ export function SuggestionCard({ suggestion, video, selected, refining, onToggle
       )}
       onClick={onToggle}
     >
-      <video
+      <VideoThumbnail
         src={video.url}
-        preload="metadata"
-        className="w-full rounded-md aspect-video object-cover"
+        thumbnailUrl={video.thumbnail_url}
+        className="w-full rounded-md aspect-video"
       />
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium truncate">{video.filename}</p>

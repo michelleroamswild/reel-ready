@@ -2,6 +2,7 @@ import type { MatchWithDetails } from "@/types/match";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Trash } from "@phosphor-icons/react";
+import { VideoThumbnail } from "@/components/VideoThumbnail";
 
 interface Props {
   match: MatchWithDetails;
@@ -11,11 +12,10 @@ interface Props {
 export function MatchCard({ match, onDelete }: Props) {
   return (
     <div className="rounded-lg border bg-card p-3 space-y-2">
-      <video
+      <VideoThumbnail
         src={match.video.url}
-        controls
-        preload="metadata"
-        className="w-full rounded-md"
+        thumbnailUrl={match.video.thumbnail_url}
+        className="w-full aspect-video rounded-md"
       />
       <p className="text-sm font-medium leading-snug">"{match.phrase.text}"</p>
       {match.phrase.tags.length > 0 && (

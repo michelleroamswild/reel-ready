@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowsClockwise } from "@phosphor-icons/react";
 import type { ReelSegmentWithVideo } from "@/types/reel";
+import { VideoThumbnail } from "@/components/VideoThumbnail";
 
 interface Props {
   segment: ReelSegmentWithVideo;
@@ -15,10 +16,10 @@ export function SegmentCard({ segment, onSwap }: Props) {
     <div className="rounded-lg border bg-card overflow-hidden">
       {/* Video preview with timestamp overlay */}
       <div className="relative aspect-video bg-muted">
-        <video
+        <VideoThumbnail
           src={`${segment.video.url}#t=${segment.start_seconds}`}
-          preload="metadata"
-          className="w-full h-full object-cover"
+          thumbnailUrl={segment.video.thumbnail_url}
+          className="w-full h-full"
         />
         <div className="absolute top-2 left-2 flex gap-1">
           <Badge
