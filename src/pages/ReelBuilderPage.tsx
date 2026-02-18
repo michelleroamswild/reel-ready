@@ -1729,6 +1729,7 @@ export default function ReelBuilderPage() {
                   startSeconds: 0,
                   endSeconds: Math.round(endSeconds * 10) / 10,
                 });
+                setCurrentIndex(segments.length); // jump to the newly added segment
                 setShowAddClip(false);
               }}
               disabled={!addClipVideoId || isAdding}

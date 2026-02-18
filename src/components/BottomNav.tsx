@@ -13,7 +13,7 @@ const links = [
 export function BottomNav() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-card/80 backdrop-blur-md">
-      <div className="mx-auto flex max-w-lg">
+      <div className="mx-auto flex max-w-lg px-4">
         {links.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
@@ -21,7 +21,7 @@ export function BottomNav() {
             end={to === "/"}
             className={({ isActive }) =>
               cn(
-                "flex flex-1 flex-col items-center gap-0.5 py-2.5 sm:py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] pt-3 text-xs transition-colors",
+                "flex flex-1 flex-col items-center gap-0.5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 text-xs transition-colors",
                 isActive ? "text-primary" : "text-muted-foreground"
               )
             }
