@@ -72,6 +72,18 @@ function parseTextSize(value: string | number | undefined): number {
   return num;
 }
 
+function parseTextWidth(value: string | number | undefined): number {
+  const num = typeof value === "number" ? value : parseInt(value ?? "", 10);
+  if (isNaN(num) || num <= 0) return 100;
+  return Math.min(100, Math.max(40, num));
+}
+
+function parseTextShadowIntensity(value: string | number | undefined): number {
+  const num = typeof value === "number" ? value : parseInt(value ?? "", 10);
+  if (isNaN(num) || num <= 0) return 5;
+  return Math.min(10, Math.max(1, num));
+}
+
 export default function ReelBuilderPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -105,6 +117,8 @@ export default function ReelBuilderPage() {
   const [textBorder, setTextBorder] = useState<TextBorder>("shadow");
   const [textBorderColor, setTextBorderColor] = useState<TextBorderColor>("black");
   const [textColor, setTextColor] = useState<TextColor>("white");
+  const [textWidth, setTextWidth] = useState<number>(100);
+  const [textShadowIntensity, setTextShadowIntensity] = useState<number>(5);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   // Caption generator state
@@ -142,6 +156,8 @@ export default function ReelBuilderPage() {
       setTextBorder((reel.text_border as TextBorder) ?? "shadow");
       setTextBorderColor((reel.text_border_color as TextBorderColor) ?? "black");
       setTextColor(reel.text_color ?? "white");
+      setTextWidth(parseTextWidth(reel.text_width));
+      setTextShadowIntensity(parseTextShadowIntensity(reel.text_shadow_intensity));
       setSettingsLoaded(true);
     }
   }, [reel, settingsLoaded]);
@@ -155,6 +171,8 @@ export default function ReelBuilderPage() {
       text_border: string;
       text_border_color: string;
       text_color: string;
+      text_width: string;
+      text_shadow_intensity: string;
     }>) => {
       if (!settingsLoaded) return;
       updateTextSettings({
@@ -164,10 +182,12 @@ export default function ReelBuilderPage() {
         text_border: textBorder,
         text_border_color: textBorderColor,
         text_color: textColor,
+        text_width: String(textWidth),
+        text_shadow_intensity: String(textShadowIntensity),
         ...overrides,
       });
     },
-    [settingsLoaded, burnText, textPosition, textSize, textBorder, textBorderColor, textColor, updateTextSettings]
+    [settingsLoaded, burnText, textPosition, textSize, textBorder, textBorderColor, textColor, textWidth, textShadowIntensity, updateTextSettings]
   );
 
   // Inline preview state
@@ -539,7 +559,7 @@ export default function ReelBuilderPage() {
           {/* Section text overlay */}
           {current && burnText && current.section_text && (
             <div
-              className={`absolute left-0 right-0 z-20 px-3 ${
+              className={`absolute left-0 right-0 z-20 flex justify-center ${
                 textPosition === "top"
                   ? "top-[15%]"
                   : textPosition === "center"
@@ -547,31 +567,35 @@ export default function ReelBuilderPage() {
                   : "bottom-[15%]"
               }`}
             >
-              <p
-                className="font-semibold text-center whitespace-pre-line"
-                style={{
-                  fontSize: `${textSize}cqw`,
-                  color: textColor,
-                  ...(textBorder === "outline"
-                    ? {
-                        WebkitTextStroke: `0.8px ${textBorderColor}`,
-                        textShadow: `0 0 2px ${textBorderColor}`,
-                      }
-                    : textBorder === "shadow"
-                    ? {
-                        textShadow: "0 0 6px rgba(0,0,0,0.7), 0 0 12px rgba(0,0,0,0.4)",
-                      }
-                    : {
-                        background: `${textBorderColor === "black" ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.35)"}`,
-                        padding: "4px 10px",
-                        borderRadius: 6,
-                        display: "inline",
-                        boxDecorationBreak: "clone" as const,
-                      }),
-                }}
-              >
-                {current.section_text}
-              </p>
+              <div style={{ width: `${textWidth}%`, paddingLeft: '0.75rem', paddingRight: '0.75rem' }}>
+                <p
+                  className="font-semibold text-center whitespace-pre-line"
+                  style={{
+                    fontSize: `${textSize}cqw`,
+                    color: textColor,
+                    ...(textBorder === "none"
+                      ? {}
+                      : textBorder === "outline"
+                      ? {
+                          WebkitTextStroke: `0.8px ${textBorderColor}`,
+                          textShadow: `0 0 2px ${textBorderColor}`,
+                        }
+                      : textBorder === "shadow"
+                      ? {
+                          textShadow: `0 0 ${Math.round(6 * textShadowIntensity / 5)}px rgba(0,0,0,${Math.min(1, 0.7 * textShadowIntensity / 5).toFixed(2)}), 0 0 ${Math.round(12 * textShadowIntensity / 5)}px rgba(0,0,0,${Math.min(1, 0.4 * textShadowIntensity / 5).toFixed(2)})`,
+                        }
+                      : {
+                          background: `${textBorderColor === "black" ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.35)"}`,
+                          padding: "4px 10px",
+                          borderRadius: 6,
+                          display: "inline",
+                          boxDecorationBreak: "clone" as const,
+                        }),
+                  }}
+                >
+                  {current.section_text}
+                </p>
+              </div>
             </div>
           )}
 
@@ -840,6 +864,22 @@ export default function ReelBuilderPage() {
                 </div>
 
                 <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Width</Label>
+                  <div className="flex items-center gap-2 h-7">
+                    <span className="text-[10px] text-muted-foreground">N</span>
+                    <Slider
+                      min={40}
+                      max={100}
+                      step={5}
+                      value={[textWidth]}
+                      onValueChange={([v]) => { setTextWidth(v); saveTextSettings({ text_width: String(v) }); }}
+                      className="flex-1"
+                    />
+                    <span className="text-[10px] text-muted-foreground">W</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Color</Label>
                   <div className="flex gap-1">
                     {([
@@ -868,6 +908,7 @@ export default function ReelBuilderPage() {
                   <Label className="text-xs text-muted-foreground">Border style</Label>
                   <div className="flex gap-1">
                     {([
+                      { value: "none", label: "None" },
                       { value: "outline", label: "Outline" },
                       { value: "shadow", label: "Shadow" },
                       { value: "box", label: "Box" },
@@ -884,6 +925,24 @@ export default function ReelBuilderPage() {
                     ))}
                   </div>
                 </div>
+
+                {textBorder === "shadow" && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Shadow intensity</Label>
+                    <div className="flex items-center gap-2 h-7">
+                      <span className="text-[10px] text-muted-foreground">Light</span>
+                      <Slider
+                        min={1}
+                        max={10}
+                        step={1}
+                        value={[textShadowIntensity]}
+                        onValueChange={([v]) => { setTextShadowIntensity(v); saveTextSettings({ text_shadow_intensity: String(v) }); }}
+                        className="flex-1"
+                      />
+                      <span className="text-[10px] text-muted-foreground">Heavy</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1693,6 +1752,8 @@ export default function ReelBuilderPage() {
         textBorder={textBorder}
         textBorderColor={textBorderColor}
         textColor={textColor}
+        textWidth={textWidth}
+        textShadowIntensity={textShadowIntensity}
       />
 
       {/* Delete trial batch confirmation */}

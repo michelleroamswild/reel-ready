@@ -42,7 +42,7 @@ app.post("/export-reel", async (req, res) => {
     return res.status(401).json({ error: "Invalid API key" });
   }
 
-  const { segments, burnText, textPosition, textSize, textBorder, textBorderColor, textColor, fontColor } = req.body;
+  const { segments, burnText, textPosition, textSize, textBorder, textBorderColor, textColor, fontColor, textWidth, textShadowIntensity } = req.body;
 
   if (!segments?.length) {
     return res.status(400).json({ error: "No segments provided" });
@@ -69,7 +69,7 @@ app.post("/export-reel", async (req, res) => {
 
     // 2. Run FFmpeg
     if (burnText) {
-      await exportWithText(segments, inputPaths, outputPath, textPosition, textSize, textBorder, textBorderColor, textColor || fontColor);
+      await exportWithText(segments, inputPaths, outputPath, textPosition, textSize, textBorder, textBorderColor, textColor || fontColor, textWidth, textShadowIntensity);
     } else {
       await exportCopyMode(segments, inputPaths, outputPath, workDir);
     }
@@ -148,14 +148,42 @@ async function exportCopyMode(segments, inputPaths, outputPath, workDir) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Word-wrap helper (FFmpeg drawtext has no auto-wrap)                 */
+/* ------------------------------------------------------------------ */
+
+function wrapText(text, fontSize, availableWidth) {
+  // ~0.52x fontSize matches system sans-serif wrapping in the CSS preview
+  const charWidth = fontSize * 0.52;
+  const maxChars = Math.max(5, Math.floor(availableWidth / charWidth));
+
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = "";
+
+  for (const word of words) {
+    if (!line) {
+      line = word;
+    } else if ((line + " " + word).length <= maxChars) {
+      line += " " + word;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+
+  return lines.join("\n");
+}
+
+/* ------------------------------------------------------------------ */
 /*  FFmpeg: re-encode with text overlay                                */
 /* ------------------------------------------------------------------ */
 
-async function exportWithText(segments, inputPaths, outputPath, textPosition, textSize, textBorder, textBorderColor, textColor) {
+async function exportWithText(segments, inputPaths, outputPath, textPosition, textSize, textBorder, textBorderColor, textColor, textWidth, textShadowIntensity) {
   const WIDTH = 1080;
   const HEIGHT = 1920;
 
-  // Y coordinate for text position
+  // Y coordinate for text position (matches original working positions)
   let textY;
   if (textPosition === "top") textY = "(h*0.15)";
   else if (textPosition === "center") textY = "(h/2)";
@@ -187,9 +215,14 @@ async function exportWithText(segments, inputPaths, outputPath, textPosition, te
   // Border style params for drawtext — scaled to match preview at ~4x
   const borderColor = textBorderColor || "black";
   let borderParams;
-  if (textBorder === "shadow") {
-    // Centered glow (no offset) — use multiple shadow layers
-    borderParams = "shadowx=0:shadowy=0:shadowcolor=black@0.7";
+  if (textBorder === "none") {
+    borderParams = "";
+  } else if (textBorder === "shadow") {
+    // Glow effect using borderw (matches CSS text-shadow: 0 0 Xpx blur glow)
+    const intensity = Math.min(10, Math.max(1, Number(textShadowIntensity) || 5));
+    const borderW = Math.max(1, Math.round(intensity * 0.8));
+    const glowOpacity = Math.min(1, 0.14 * intensity).toFixed(2);
+    borderParams = `borderw=${borderW}:bordercolor=black@${glowOpacity}`;
   } else if (textBorder === "box") {
     borderParams = `box=1:boxborderw=16:boxcolor=${borderColor}@0.35`;
   } else {
@@ -212,12 +245,30 @@ async function exportWithText(segments, inputPaths, outputPath, textPosition, te
 
     const text = seg.sectionText || "";
     if (text) {
-      const escapedText = text
-        .replace(/\\/g, "\\\\\\\\")
-        .replace(/'/g, "'\\\\\\''")
-        .replace(/:/g, "\\:")
-        .replace(/%/g, "%%");
-      vf += `,drawtext=text='${escapedText}':fontfile=${fontFile}:fontsize=${fontSize}:fontcolor=${fontColor}:x=(w-text_w)/2:y=${textY}:${borderParams}`;
+      const widthPct = Math.min(100, Math.max(40, Number(textWidth) || 100));
+      const wrapWidth = Math.round(WIDTH * widthPct / 100);
+      const lines = wrapText(text, fontSize, wrapWidth).split("\n");
+      const lineHeight = Math.round(fontSize * 1.4);
+      const totalTextHeight = lines.length * lineHeight;
+
+      // Calculate starting Y so the text block is positioned correctly
+      let startY;
+      if (textPosition === "top") startY = Math.round(HEIGHT * 0.15);
+      else if (textPosition === "center") startY = Math.round((HEIGHT - totalTextHeight) / 2);
+      else startY = Math.round(HEIGHT * 0.85 - totalTextHeight);
+
+      console.log(`[export] Text "${text}" → ${lines.length} lines, fontSize=${fontSize}, lineHeight=${lineHeight}, startY=${startY}`);
+
+      // Render each line as its own drawtext so each is independently centered
+      for (let j = 0; j < lines.length; j++) {
+        const lineY = startY + j * lineHeight;
+        const escaped = lines[j]
+          .replace(/\\/g, "\\\\\\\\")
+          .replace(/'/g, "'\\\\\\''")
+          .replace(/:/g, "\\:")
+          .replace(/%/g, "%%");
+        vf += `,drawtext=text='${escaped}':fontfile=${fontFile}:fontsize=${fontSize}:fontcolor=${fontColor}:x=(w-text_w)/2:y=${lineY}:${borderParams}`;
+      }
     }
 
     await runFFmpeg([

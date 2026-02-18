@@ -20,7 +20,9 @@ type ProgressCallback = (progress: ExportProgress) => void;
 
 export type TextPosition = "top" | "center" | "bottom";
 export type TextSize = number;
-export type TextBorder = "outline" | "shadow" | "box";
+export type TextBorder = "none" | "outline" | "shadow" | "box";
+export type TextWidth = number; // 40-100 (percentage of container width)
+export type TextShadowIntensity = number; // 1-10 (shadow strength, default 5)
 export type TextBorderColor = "black" | "white";
 export type TextColor = string;
 
@@ -40,6 +42,8 @@ export async function exportReel(
     textBorder?: TextBorder;
     textBorderColor?: TextBorderColor;
     textColor?: TextColor;
+    textWidth?: TextWidth;
+    textShadowIntensity?: TextShadowIntensity;
   },
   onProgress: ProgressCallback
 ): Promise<Blob> {
@@ -65,6 +69,8 @@ export async function exportReel(
     textBorder: options.textBorder ?? "shadow",
     textBorderColor: options.textBorderColor ?? "black",
     textColor: options.textColor ?? "white",
+    textWidth: options.textWidth ?? 100,
+    textShadowIntensity: options.textShadowIntensity ?? 5,
   };
 
   // Estimate total processing time: ~8s per segment for download + encode

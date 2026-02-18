@@ -424,7 +424,7 @@ interface ScoredTrend {
  * Select the best-fit trends for a clip using soft-weight scoring.
  * Returns up to `k` trends with category diversity (3-4 categories represented).
  */
-export function selectTrendsForClip(clip: ClipProfile, k = 10): Trend[] {
+export function selectTrendsForClip(clip: ClipProfile, k = 10, categoryBias?: string[]): Trend[] {
   // Score all non-avoided trends
   const scored: ScoredTrend[] = [];
 
@@ -436,7 +436,15 @@ export function selectTrendsForClip(clip: ClipProfile, k = 10): Trend[] {
     const weight = trend.weight ?? 1;
 
     // Composite: 60% tone fit, 30% tag affinity, 10% base weight
-    const composite = (toneScore * 0.6 + tagScore * 0.3 + (weight - 0.5) * 0.2);
+    let composite = (toneScore * 0.6 + tagScore * 0.3 + (weight - 0.5) * 0.2);
+
+    // Boost trends in biased categories (from style selection)
+    if (categoryBias?.includes(trend.category)) {
+      composite += 0.15;
+    }
+
+    // Add small random jitter to shuffle similar-scoring trends
+    composite += (Math.random() - 0.5) * 0.2;
 
     scored.push({ trend, score: composite });
   }
