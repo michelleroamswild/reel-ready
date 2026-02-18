@@ -34,6 +34,8 @@ export function useExportReel() {
         textBorder?: TextBorder;
         textBorderColor?: TextBorderColor;
         textColor?: TextColor;
+        textWidth?: number;
+        textShadowIntensity?: number;
         filename: string;
       }
     ) => {
@@ -52,6 +54,8 @@ export function useExportReel() {
             textBorder: options.textBorder,
             textBorderColor: options.textBorderColor,
             textColor: options.textColor,
+            textWidth: options.textWidth,
+            textShadowIntensity: options.textShadowIntensity,
           },
           (p) => {
             if (!cancelledRef.current) {

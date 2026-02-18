@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
 
   try {
     await getAuthUser(req);
-    const { segments, burnText, textPosition, textSize, textBorder, textBorderColor, textColor } = await req.json();
+    const { segments, burnText, textPosition, textSize, textBorder, textBorderColor, textColor, textWidth, textShadowIntensity } = await req.json();
 
     if (!segments?.length) {
       return new Response(
@@ -48,6 +48,8 @@ Deno.serve(async (req) => {
       textBorder: textBorder ?? "shadow",
       textBorderColor: textBorderColor ?? "black",
       textColor: textColor ?? "white",
+      textWidth: textWidth ?? 100,
+      textShadowIntensity: textShadowIntensity ?? 5,
       r2: {
         accountId: Deno.env.get("R2_ACCOUNT_ID")!,
         accessKeyId: Deno.env.get("R2_ACCESS_KEY_ID")!,

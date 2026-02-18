@@ -41,6 +41,8 @@ interface Props {
   textBorder: TextBorder;
   textBorderColor: TextBorderColor;
   textColor: TextColor;
+  textWidth: number;
+  textShadowIntensity: number;
 }
 
 const STAGE_LABELS: Record<ExportStage, string> = {
@@ -63,6 +65,8 @@ export function ExportReelDialog({
   textBorder,
   textBorderColor,
   textColor,
+  textWidth,
+  textShadowIntensity,
 }: Props) {
   const { isExporting, progress, error, startExport, cancelExport, reset } =
     useExportReel();
@@ -83,6 +87,8 @@ export function ExportReelDialog({
       textBorder,
       textBorderColor,
       textColor,
+      textWidth,
+      textShadowIntensity,
       filename: `${safeName}_reel.mp4`,
     });
   };

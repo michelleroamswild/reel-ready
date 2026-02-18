@@ -352,6 +352,8 @@ export function useReel(id: string | undefined) {
       text_border: string;
       text_border_color: string;
       text_color: string;
+      text_width?: string;
+      text_shadow_intensity?: string;
     }) => {
       const { error } = await supabase
         .from("reels")

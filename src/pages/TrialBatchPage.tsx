@@ -69,9 +69,11 @@ export default function TrialBatchPage() {
           (reel.text_position as "top" | "center" | "bottom") ?? "center",
         textSize: parsedSize,
         textBorder:
-          (reel.text_border as "outline" | "shadow" | "box") ?? "shadow",
+          (reel.text_border as "none" | "outline" | "shadow" | "box") ?? "shadow",
         textBorderColor:
           (reel.text_border_color as "black" | "white") ?? "black",
+        textWidth: parseInt(reel.text_width ?? "100", 10) || 100,
+        textShadowIntensity: parseInt(reel.text_shadow_intensity ?? "5", 10) || 5,
         filename: `${safeName}_reel.mp4`,
       });
     }
