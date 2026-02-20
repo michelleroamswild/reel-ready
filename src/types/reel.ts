@@ -19,6 +19,7 @@ export interface ReelTemplate {
   visualStyleNotes: string;
   textOverlayStyle: string | null;
   sourceUrl: string | null;
+  sourceR2Key?: string | null;
 }
 
 export interface SavedCaption {

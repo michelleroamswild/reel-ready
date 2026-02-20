@@ -16,6 +16,7 @@ import TrialBatchPage from "@/pages/TrialBatchPage";
 import VideoDetailPage from "@/pages/VideoDetailPage";
 import TrendsPage from "@/pages/TrendsPage";
 import AccountPage from "@/pages/AccountPage";
+import TemplatesPage from "@/pages/TemplatesPage";
 import InstagramCallbackPage from "@/pages/InstagramCallbackPage";
 import NotFound from "./pages/NotFound";
 
@@ -61,6 +62,7 @@ const App = () => (
                               <Route path="/" element={<ReelsPage />} />
                               <Route path="/phrases" element={<PhrasesPage />} />
                               <Route path="/videos" element={<VideosPage />} />
+                              <Route path="/templates" element={<TemplatesPage />} />
                               <Route path="/trends" element={<TrendsPage />} />
                               <Route path="/account" element={<AccountPage />} />
                               <Route path="*" element={<NotFound />} />

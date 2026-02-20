@@ -39,7 +39,7 @@ export function useCloneReel() {
   );
 
   const analyzeSource = useCallback(
-    async (videoUrl: string, mimeType: string, sourceUrl: string | null) => {
+    async (videoUrl: string, mimeType: string, sourceUrl: string | null, sourceR2Key: string | null = null) => {
       setState((s) => ({ ...s, step: "analyzing", error: null }));
       try {
         const { data, error } = await supabase.functions.invoke(
@@ -56,6 +56,7 @@ export function useCloneReel() {
 
         const template = parsed.template as ReelTemplate;
         template.sourceUrl = sourceUrl;
+        template.sourceR2Key = sourceR2Key;
         setState({ step: "review", template, error: null });
       } catch (err) {
         setState({
@@ -107,8 +108,8 @@ export function useCloneReel() {
     async (file: File) => {
       setState((s) => ({ ...s, step: "uploading", error: null }));
       try {
-        const { url } = await uploadToR2(file);
-        await analyzeSource(url, file.type, null);
+        const { key, url } = await uploadToR2(file);
+        await analyzeSource(url, file.type, url, key);
       } catch (err) {
         setState({
           step: "error",
