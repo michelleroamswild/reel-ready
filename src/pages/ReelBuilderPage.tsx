@@ -1844,7 +1844,7 @@ function SegTimeInput({
       <input
         type="text"
         inputMode="decimal"
-        className="w-full h-5 bg-muted border rounded px-1 text-[9px] text-center outline-none"
+        className="w-full h-7 sm:h-5 bg-muted border rounded px-1 text-[11px] sm:text-[9px] text-center outline-none"
         title={title}
         value={draft}
         onFocus={() => setFocused(true)}
@@ -1927,7 +1927,7 @@ function SortableSegmentCard({
     <div
       ref={setNodeRef}
       style={style}
-      className={`shrink-0 w-28 rounded-md border-2 bg-card cursor-pointer transition-colors snap-start ${
+      className={`shrink-0 w-36 sm:w-28 rounded-md border-2 bg-card cursor-pointer transition-colors snap-start ${
         isActive ? "border-primary" : "border-border hover:border-primary/50"
       }`}
       onClick={onJump}
@@ -1945,23 +1945,23 @@ function SortableSegmentCard({
           iconSize="sm"
         />
         <div className="absolute top-1 left-1">
-          <Badge variant="secondary" className="bg-black/60 text-white text-[9px] border-0 px-1 py-0">
+          <Badge variant="secondary" className="bg-black/60 text-white text-[11px] sm:text-[9px] border-0 px-1.5 sm:px-1 py-0">
             #{idx + 1}
           </Badge>
         </div>
         <div className="absolute top-1 right-1">
-          <Badge variant="secondary" className="bg-black/60 text-white text-[9px] border-0 px-1 py-0">
+          <Badge variant="secondary" className="bg-black/60 text-white text-[11px] sm:text-[9px] border-0 px-1.5 sm:px-1 py-0">
             {roundedDur}s
           </Badge>
         </div>
       </div>
 
       {/* Content */}
-      <div className="p-1.5 space-y-1">
+      <div className="p-2 sm:p-1.5 space-y-1.5 sm:space-y-1">
         {editingTextSegId === segment.id ? (
           <textarea
             autoFocus
-            className="text-[10px] font-medium leading-snug w-full bg-muted border rounded px-1.5 py-1 outline-none resize-none"
+            className="text-xs sm:text-[10px] font-medium leading-snug w-full bg-muted border rounded px-1.5 py-1 outline-none resize-none"
             rows={2}
             value={textDraft}
             onClick={(e) => e.stopPropagation()}
@@ -1981,7 +1981,7 @@ function SortableSegmentCard({
           />
         ) : (
           <p
-            className="text-[10px] font-medium leading-snug line-clamp-1 cursor-pointer hover:text-primary/80 transition-colors"
+            className="text-xs sm:text-[10px] font-medium leading-snug line-clamp-1 cursor-pointer hover:text-primary/80 transition-colors"
             onClick={(e) => {
               e.stopPropagation();
               onEditText(segment.id, segment.section_text);
@@ -1990,7 +1990,7 @@ function SortableSegmentCard({
             {segment.section_text || <span className="text-muted-foreground italic">Add text...</span>}
           </p>
         )}
-        <div className="flex gap-0.5 text-[9px]" onClick={(e) => e.stopPropagation()}>
+        <div className="flex gap-0.5 text-[11px] sm:text-[9px]" onClick={(e) => e.stopPropagation()}>
           <SegTimeInput
             value={roundedDur}
             max={Math.round(((segment.video.duration_seconds ?? 999) - segment.start_seconds) * 10) / 10}
@@ -2006,49 +2006,49 @@ function SortableSegmentCard({
           />
         </div>
         {/* Slip & find best */}
-        <div className="flex gap-0.5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex gap-1 sm:gap-0.5" onClick={(e) => e.stopPropagation()}>
           <button
-            className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-muted-foreground hover:bg-muted transition-colors disabled:opacity-30"
+            className="flex-1 inline-flex items-center justify-center h-7 sm:h-5 rounded border bg-background text-muted-foreground hover:bg-muted transition-colors disabled:opacity-30"
             title="Slip earlier"
             disabled={segment.start_seconds <= 0}
             onClick={() => onSlipEarlier(segment)}
           >
-            <CaretLeft className="h-2.5 w-2.5" />
+            <CaretLeft className="h-3.5 w-3.5 sm:h-2.5 sm:w-2.5" />
           </button>
           <button
-            className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-primary hover:bg-muted transition-colors"
+            className="flex-1 inline-flex items-center justify-center h-7 sm:h-5 rounded border bg-background text-primary hover:bg-muted transition-colors"
             title="AI: find best moment"
             disabled={findingBestSegId === segment.id}
             onClick={onFindBest}
           >
             {findingBestSegId === segment.id ? (
-              <CircleNotch className="h-2.5 w-2.5 animate-spin" />
+              <CircleNotch className="h-3.5 w-3.5 sm:h-2.5 sm:w-2.5 animate-spin" />
             ) : (
-              <Sparkle className="h-2.5 w-2.5" />
+              <Sparkle className="h-3.5 w-3.5 sm:h-2.5 sm:w-2.5" />
             )}
           </button>
           <button
-            className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-muted-foreground hover:bg-muted transition-colors disabled:opacity-30"
+            className="flex-1 inline-flex items-center justify-center h-7 sm:h-5 rounded border bg-background text-muted-foreground hover:bg-muted transition-colors disabled:opacity-30"
             title="Slip later"
             disabled={segment.end_seconds >= (segment.video.duration_seconds ?? 999)}
             onClick={() => onSlipLater(segment)}
           >
-            <CaretRight className="h-2.5 w-2.5" />
+            <CaretRight className="h-3.5 w-3.5 sm:h-2.5 sm:w-2.5" />
           </button>
         </div>
         <div className="flex gap-1">
           <button
-            className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-muted-foreground hover:bg-muted transition-colors"
+            className="flex-1 inline-flex items-center justify-center h-7 sm:h-5 rounded border bg-background text-muted-foreground hover:bg-muted transition-colors"
             onClick={(e) => { e.stopPropagation(); onSwap(); }}
           >
-            <ArrowsClockwise className="h-2.5 w-2.5" />
+            <ArrowsClockwise className="h-3.5 w-3.5 sm:h-2.5 sm:w-2.5" />
           </button>
           <button
-            className="flex-1 inline-flex items-center justify-center h-5 rounded border bg-background text-destructive hover:bg-muted transition-colors"
+            className="flex-1 inline-flex items-center justify-center h-7 sm:h-5 rounded border bg-background text-destructive hover:bg-muted transition-colors"
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
             title="Delete segment"
           >
-            <Trash className="h-2.5 w-2.5" />
+            <Trash className="h-3.5 w-3.5 sm:h-2.5 sm:w-2.5" />
           </button>
         </div>
       </div>

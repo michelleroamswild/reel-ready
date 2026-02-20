@@ -1,4 +1,5 @@
 import type { ReelSegmentWithVideo } from "@/types/reel";
+import { renderTextOverlay } from "./render-text-overlay";
 
 export type ExportStage =
   | "loading"
@@ -30,8 +31,8 @@ const WORKER_URL = import.meta.env.VITE_EXPORT_WORKER_URL as string;
 
 /**
  * Export a reel by sending segment data to the Fly.io FFmpeg worker.
- * The worker trims, concatenates, and optionally overlays text,
- * then returns the MP4 directly.
+ * Text overlays are rendered as transparent PNGs in the browser (Canvas API)
+ * so they match the preview exactly, then composited by FFmpeg on the worker.
  */
 export async function exportReel(
   segments: ReelSegmentWithVideo[],
@@ -53,24 +54,40 @@ export async function exportReel(
 
   onProgress({ stage: "loading", stageProgress: 0, overallProgress: 0 });
 
-  // Send the raw percentage — the worker scales this relative to video width
+  // Filter valid segments
+  const validSegments = segments.filter((seg) => seg.end_seconds > seg.start_seconds);
+
+  // Render text overlays as transparent PNGs in the browser
+  const overlayPngs: (string | null)[] = [];
+  if (options.burnText) {
+    for (const seg of validSegments) {
+      if (seg.section_text?.trim()) {
+        const dataUrl = await renderTextOverlay({
+          text: seg.section_text,
+          position: options.textPosition ?? "bottom",
+          textSize: options.textSize ?? 4.5,
+          textColor: options.textColor ?? "white",
+          textBorder: options.textBorder ?? "shadow",
+          textBorderColor: options.textBorderColor ?? "black",
+          textWidth: options.textWidth ?? 100,
+          textShadowIntensity: options.textShadowIntensity ?? 5,
+        });
+        // Strip the data URL prefix, send just the base64 payload
+        overlayPngs.push(dataUrl ? dataUrl.replace(/^data:image\/png;base64,/, "") : null);
+      } else {
+        overlayPngs.push(null);
+      }
+    }
+  }
+
   const body = {
-    segments: segments
-      .filter((seg) => seg.end_seconds > seg.start_seconds)
-      .map((seg) => ({
-        videoUrl: seg.video.url,
-        startSeconds: seg.start_seconds,
-        endSeconds: Math.max(seg.end_seconds, seg.start_seconds + 0.1),
-        sectionText: seg.section_text,
-      })),
+    segments: validSegments.map((seg, i) => ({
+      videoUrl: seg.video.url,
+      startSeconds: seg.start_seconds,
+      endSeconds: Math.max(seg.end_seconds, seg.start_seconds + 0.1),
+      overlayPng: options.burnText ? overlayPngs[i] ?? null : null,
+    })),
     burnText: options.burnText,
-    textPosition: options.textPosition ?? "bottom",
-    textSize: options.textSize ?? 4.5,
-    textBorder: options.textBorder ?? "shadow",
-    textBorderColor: options.textBorderColor ?? "black",
-    textColor: options.textColor ?? "white",
-    textWidth: options.textWidth ?? 100,
-    textShadowIntensity: options.textShadowIntensity ?? 5,
   };
 
   // Estimate total processing time: ~8s per segment for download + encode

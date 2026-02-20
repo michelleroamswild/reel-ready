@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const app = express();
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "2mb" }));
 app.use((_req, res, next) => {
   res.setTimeout(600_000); // 10 min response timeout
   next();
@@ -42,7 +42,7 @@ app.post("/export-reel", async (req, res) => {
     return res.status(401).json({ error: "Invalid API key" });
   }
 
-  const { segments, burnText, textPosition, textSize, textBorder, textBorderColor, textColor, fontColor, textWidth, textShadowIntensity } = req.body;
+  const { segments, burnText } = req.body;
 
   if (!segments?.length) {
     return res.status(400).json({ error: "No segments provided" });
@@ -67,9 +67,10 @@ app.post("/export-reel", async (req, res) => {
 
     const outputPath = join(workDir, "output.mp4");
 
-    // 2. Run FFmpeg
-    if (burnText) {
-      await exportWithText(segments, inputPaths, outputPath, textPosition, textSize, textBorder, textBorderColor, textColor || fontColor, textWidth, textShadowIntensity);
+    // 2. Run FFmpeg — overlay PNGs if burnText, otherwise copy mode
+    const hasOverlays = burnText && segments.some((s) => s.overlayPng);
+    if (hasOverlays) {
+      await exportWithOverlay(segments, inputPaths, outputPath, workDir);
     } else {
       await exportCopyMode(segments, inputPaths, outputPath, workDir);
     }
@@ -148,150 +149,74 @@ async function exportCopyMode(segments, inputPaths, outputPath, workDir) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Word-wrap helper (FFmpeg drawtext has no auto-wrap)                 */
+/*  FFmpeg: composite PNG overlays onto video                          */
 /* ------------------------------------------------------------------ */
 
-function wrapText(text, fontSize, availableWidth) {
-  // ~0.52x fontSize matches system sans-serif wrapping in the CSS preview
-  const charWidth = fontSize * 0.52;
-  const maxChars = Math.max(5, Math.floor(availableWidth / charWidth));
-
-  const words = text.split(/\s+/).filter(Boolean);
-  const lines = [];
-  let line = "";
-
-  for (const word of words) {
-    if (!line) {
-      line = word;
-    } else if ((line + " " + word).length <= maxChars) {
-      line += " " + word;
-    } else {
-      lines.push(line);
-      line = word;
-    }
-  }
-  if (line) lines.push(line);
-
-  return lines.join("\n");
-}
-
-/* ------------------------------------------------------------------ */
-/*  FFmpeg: re-encode with text overlay                                */
-/* ------------------------------------------------------------------ */
-
-async function exportWithText(segments, inputPaths, outputPath, textPosition, textSize, textBorder, textBorderColor, textColor, textWidth, textShadowIntensity) {
+async function exportWithOverlay(segments, inputPaths, outputPath, workDir) {
   const WIDTH = 1080;
   const HEIGHT = 1920;
 
-  // Y coordinate for text position (matches original working positions)
-  let textY;
-  if (textPosition === "top") textY = "(h*0.15)";
-  else if (textPosition === "center") textY = "(h/2)";
-  else textY = "(h*0.85)"; // bottom (default)
-
-  // Font — Liberation Sans Bold is a clean sans-serif (like Arial/Helvetica)
-  const fontFile = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf";
-
-  // Font size — supports percentage of width (new) and legacy px values
-  const fontSizeMap = { small: 36, medium: 72, large: 96 };
-  let fontSize;
-  if (typeof textSize === "string" && fontSizeMap[textSize]) {
-    fontSize = fontSizeMap[textSize];
-  } else {
-    const num = Number(textSize);
-    if (num <= 8) {
-      // New percentage-based: convert to pixels (percentage of 1080px width)
-      fontSize = Math.round((num / 100) * WIDTH);
-    } else {
-      // Legacy px-based values (9–24): multiply by 4 for 1080p
-      fontSize = num * 4;
-    }
-  }
-  if (!fontSize || fontSize < 20) fontSize = 72;
-
-  // Font color — supports hex (#ffffff), named colors (white, black), default white
-  const fontColor = (textColor || "white").replace(/^#/, "0x");
-
-  // Border style params for drawtext — scaled to match preview at ~4x
-  const borderColor = textBorderColor || "black";
-  let borderParams;
-  if (textBorder === "none") {
-    borderParams = "";
-  } else if (textBorder === "shadow") {
-    // Glow effect using borderw (matches CSS text-shadow: 0 0 Xpx blur glow)
-    const intensity = Math.min(10, Math.max(1, Number(textShadowIntensity) || 5));
-    const borderW = Math.max(1, Math.round(intensity * 0.8));
-    const glowOpacity = Math.min(1, 0.14 * intensity).toFixed(2);
-    borderParams = `borderw=${borderW}:bordercolor=black@${glowOpacity}`;
-  } else if (textBorder === "box") {
-    borderParams = `box=1:boxborderw=16:boxcolor=${borderColor}@0.35`;
-  } else {
-    // outline (default)
-    borderParams = `borderw=3:bordercolor=${borderColor}`;
-  }
-
-  // Process each segment ONE AT A TIME to avoid OOM from loading all inputs
-  const workDir = join(outputPath, "..");
   const processedPaths = [];
 
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
-    const processedPath = join(workDir, `text${i}.mp4`);
-    console.log(`[export] Processing segment ${i} with text overlay`);
+    const processedPath = join(workDir, `ovr${i}.mp4`);
 
-    // Build video filter: trim + reset PTS + scale + pad + optional drawtext
-    let vf = `trim=start=${seg.startSeconds}:end=${seg.endSeconds},setpts=PTS-STARTPTS,scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,pad=${WIDTH}:${HEIGHT}:(ow-iw)/2:(oh-ih)/2:black`;
+    // Base video filter: trim + scale + pad
+    const vf = `trim=start=${seg.startSeconds}:end=${seg.endSeconds},setpts=PTS-STARTPTS,scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,pad=${WIDTH}:${HEIGHT}:(ow-iw)/2:(oh-ih)/2:black`;
     const af = `atrim=start=${seg.startSeconds}:end=${seg.endSeconds},asetpts=PTS-STARTPTS`;
 
-    const text = seg.sectionText || "";
-    if (text) {
-      const widthPct = Math.min(100, Math.max(40, Number(textWidth) || 100));
-      const wrapWidth = Math.round(WIDTH * widthPct / 100);
-      const lines = wrapText(text, fontSize, wrapWidth).split("\n");
-      const lineHeight = Math.round(fontSize * 1.4);
-      const totalTextHeight = lines.length * lineHeight;
+    if (seg.overlayPng) {
+      // Decode base64 PNG and write to disk
+      const overlayPath = join(workDir, `overlay_${i}.png`);
+      await writeFile(overlayPath, Buffer.from(seg.overlayPng, "base64"));
+      console.log(`[export] Segment ${i}: compositing PNG overlay`);
 
-      // Calculate starting Y so the text block is positioned correctly
-      let startY;
-      if (textPosition === "top") startY = Math.round(HEIGHT * 0.15);
-      else if (textPosition === "center") startY = Math.round((HEIGHT - totalTextHeight) / 2);
-      else startY = Math.round(HEIGHT * 0.85 - totalTextHeight);
+      // Use filter_complex: process video, then overlay the PNG on top
+      const filterComplex = `[0:v]${vf}[vid];[1:v]scale=${WIDTH}:${HEIGHT}[ovr];[vid][ovr]overlay=0:0[out]`;
 
-      console.log(`[export] Text "${text}" → ${lines.length} lines, fontSize=${fontSize}, lineHeight=${lineHeight}, startY=${startY}`);
-
-      // Render each line as its own drawtext so each is independently centered
-      for (let j = 0; j < lines.length; j++) {
-        const lineY = startY + j * lineHeight;
-        const escaped = lines[j]
-          .replace(/\\/g, "\\\\\\\\")
-          .replace(/'/g, "'\\\\\\''")
-          .replace(/:/g, "\\:")
-          .replace(/%/g, "%%");
-        vf += `,drawtext=text='${escaped}':fontfile=${fontFile}:fontsize=${fontSize}:fontcolor=${fontColor}:x=(w-text_w)/2:y=${lineY}:${borderParams}`;
-      }
+      await runFFmpeg([
+        "-y",
+        "-i", inputPaths[i],
+        "-i", overlayPath,
+        "-filter_complex", filterComplex,
+        "-af", af,
+        "-map", "[out]",
+        "-map", "0:a",
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-crf", "18",
+        "-r", "30",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        processedPath,
+      ]);
+    } else {
+      // No overlay — same as copy mode for this segment
+      console.log(`[export] Segment ${i}: no overlay`);
+      await runFFmpeg([
+        "-y",
+        "-i", inputPaths[i],
+        "-vf", vf,
+        "-af", af,
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-crf", "18",
+        "-r", "30",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        processedPath,
+      ]);
     }
-
-    await runFFmpeg([
-      "-y",
-      "-i", inputPaths[i],
-      "-vf", vf,
-      "-af", af,
-      "-c:v", "libx264",
-      "-preset", "ultrafast",
-      "-crf", "23",
-      "-r", "30",
-      "-pix_fmt", "yuv420p",
-      "-c:a", "aac",
-      "-b:a", "128k",
-      processedPath,
-    ]);
 
     processedPaths.push(processedPath);
   }
 
-  // Concat all processed segments (lossless copy since they're already encoded identically)
+  // Concat all processed segments
   const listContent = processedPaths.map((p) => `file '${p}'`).join("\n");
-  const listPath = join(workDir, "textlist.txt");
+  const listPath = join(workDir, "ovrlist.txt");
   await writeFile(listPath, listContent);
 
   await runFFmpeg([

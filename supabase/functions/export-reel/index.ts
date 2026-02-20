@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
 
   try {
     await getAuthUser(req);
-    const { segments, burnText, textPosition, textSize, textBorder, textBorderColor, textColor, textWidth, textShadowIntensity } = await req.json();
+    const { segments, burnText } = await req.json();
 
     if (!segments?.length) {
       return new Response(
@@ -25,8 +25,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Build payload for the worker — include R2 credentials so it can
-    // upload the result directly to R2.
+    // Build payload for the worker. Text overlays are now pre-rendered as
+    // transparent PNGs by the browser and sent as base64 per-segment.
     const workerPayload = {
       apiKey: WORKER_API_KEY,
       segments: segments.map(
@@ -34,22 +34,15 @@ Deno.serve(async (req) => {
           videoUrl: string;
           startSeconds: number;
           endSeconds: number;
-          sectionText: string;
+          overlayPng?: string | null;
         }) => ({
           videoUrl: seg.videoUrl,
           startSeconds: seg.startSeconds,
           endSeconds: seg.endSeconds,
-          sectionText: seg.sectionText,
+          overlayPng: seg.overlayPng ?? null,
         })
       ),
       burnText: burnText ?? false,
-      textPosition: textPosition ?? "bottom",
-      textSize: textSize ?? 49,
-      textBorder: textBorder ?? "shadow",
-      textBorderColor: textBorderColor ?? "black",
-      textColor: textColor ?? "white",
-      textWidth: textWidth ?? 100,
-      textShadowIntensity: textShadowIntensity ?? 5,
       r2: {
         accountId: Deno.env.get("R2_ACCOUNT_ID")!,
         accessKeyId: Deno.env.get("R2_ACCESS_KEY_ID")!,

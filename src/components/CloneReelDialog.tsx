@@ -63,9 +63,23 @@ export function CloneReelDialog({
 
   useEffect(() => {
     if (template && !title) {
-      const mood = template.overallMood || "reel";
-      const pacing = template.overallPacing || "";
-      setTitle(`Clone — ${mood} ${pacing}`.trim().slice(0, 40));
+      // Build a descriptive title from the segment text overlays
+      const texts = template.segments
+        .map((s) => s.textOverlay?.trim())
+        .filter(Boolean) as string[];
+
+      if (texts.length > 0) {
+        // Join the first few overlays into a short phrase
+        const joined = texts.join(" · ");
+        setTitle(joined.length > 50 ? joined.slice(0, 47) + "..." : joined);
+      } else {
+        // No text overlays — use mood + style notes
+        const parts = [
+          template.overallMood,
+          template.overallPacing,
+        ].filter(Boolean);
+        setTitle(parts.join(" · ").slice(0, 50) || "Cloned reel");
+      }
     }
   }, [template, title]);
 
