@@ -17,6 +17,7 @@ import VideoDetailPage from "@/pages/VideoDetailPage";
 import TrendsPage from "@/pages/TrendsPage";
 import AccountPage from "@/pages/AccountPage";
 import TemplatesPage from "@/pages/TemplatesPage";
+import TemplateDetailPage from "@/pages/TemplateDetailPage";
 import InstagramCallbackPage from "@/pages/InstagramCallbackPage";
 import NotFound from "./pages/NotFound";
 
@@ -49,6 +50,11 @@ const App = () => (
                         <Route path="/instagram/callback" element={
                           <main className="mx-auto max-w-lg px-4 pt-4 pb-20">
                             <InstagramCallbackPage />
+                          </main>
+                        } />
+                        <Route path="/templates/:id" element={
+                          <main className="mx-auto max-w-lg px-4 pt-4 pb-20">
+                            <TemplateDetailPage />
                           </main>
                         } />
                         <Route path="/trials/:batchId" element={

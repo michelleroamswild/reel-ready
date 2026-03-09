@@ -17,6 +17,10 @@ import {
   LinkSimple,
   UploadSimple,
   XCircle,
+  ListBullets,
+  Copy,
+  Check,
+  ArrowLeft,
 } from "@phosphor-icons/react";
 import type { Video } from "@/types/video";
 
@@ -47,12 +51,16 @@ export function CloneReelDialog({
   } = useCloneReel();
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
+  const [showClips, setShowClips] = useState(false);
+  const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
       setUrl("");
       setTitle("");
+      setShowClips(false);
+      setCopied(false);
       if (initialTemplate) {
         useFromTemplate(initialTemplate);
       } else {
@@ -235,7 +243,7 @@ export function CloneReelDialog({
         )}
 
         {/* Step: Review Template */}
-        {step === "review" && template && (
+        {step === "review" && template && !showClips && (
           <>
             <DialogHeader>
               <DialogTitle>Reel Template</DialogTitle>
@@ -318,13 +326,80 @@ export function CloneReelDialog({
                 />
               </div>
 
-              {/* Build */}
+              {/* Actions */}
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1"
+                  onClick={handleBuild}
+                  disabled={!title.trim()}
+                >
+                  <Sparkle className="h-4 w-4 mr-1" /> Build Clone
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowClips(true)}
+                >
+                  <ListBullets className="h-4 w-4 mr-1" /> Describe Clips
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Step: Describe Clips */}
+        {step === "review" && template && showClips && (
+          <>
+            <DialogHeader>
+              <DialogTitle>
+                <button
+                  className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground mr-2"
+                  onClick={() => setShowClips(false)}
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                Clips You'll Need
+              </DialogTitle>
+              <DialogDescription>
+                {template.segmentCount} clips to film or find for this reel.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {template.segments.map((seg, i) => {
+                  const overlay = seg.textOverlay ? ` Overlay text: "${seg.textOverlay}".` : "";
+                  const desc = `A ~${seg.durationSeconds.toFixed(1)}s clip of ${seg.visualDescription.toLowerCase().replace(/\.$/, "")} with a ${seg.mood.toLowerCase()}, ${seg.energy.toLowerCase()} energy feel.${overlay}`;
+                  return (
+                    <div
+                      key={seg.index}
+                      className="rounded-lg border bg-card p-3"
+                    >
+                      <p className="text-xs font-medium text-muted-foreground mb-1">Clip {i + 1}</p>
+                      <p className="text-sm">{desc}</p>
+                    </div>
+                  );
+                })}
+              </div>
               <Button
+                variant="outline"
                 className="w-full"
-                onClick={handleBuild}
-                disabled={!title.trim()}
+                onClick={() => {
+                  const text = template.segments
+                    .map((seg, i) => {
+                      const overlay = seg.textOverlay ? ` Overlay text: "${seg.textOverlay}".` : "";
+                      return `Clip ${i + 1}: A ~${seg.durationSeconds.toFixed(1)}s clip of ${seg.visualDescription.toLowerCase().replace(/\.$/, "")} with a ${seg.mood.toLowerCase()}, ${seg.energy.toLowerCase()} energy feel.${overlay}`;
+                    })
+                    .join("\n\n");
+                  navigator.clipboard.writeText(text);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
               >
-                <Sparkle className="h-4 w-4 mr-1" /> Build Clone
+                {copied ? (
+                  <><Check className="h-4 w-4 mr-1" /> Copied</>
+                ) : (
+                  <><Copy className="h-4 w-4 mr-1" /> Copy All</>
+                )}
               </Button>
             </div>
           </>

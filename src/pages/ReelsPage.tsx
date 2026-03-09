@@ -43,8 +43,10 @@ import {
   Flask,
   CaretDown,
   Layout,
+  Faders,
 } from "@phosphor-icons/react";
 import { VideoThumbnail } from "@/components/VideoThumbnail";
+import { ReelFilterSheet, type ReelFilter } from "@/components/ReelFilterSheet";
 import type { ReelWithDetails } from "@/types/reel";
 
 export default function ReelsPage() {
@@ -58,7 +60,8 @@ export default function ReelsPage() {
   const [deleteTarget, setDeleteTarget] = useState<ReelWithDetails | null>(null);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [sortNewestFirst, setSortNewestFirst] = useState(true);
-  const [filter, setFilter] = useState<"all" | "cloned" | "matched">("all");
+  const [filter, setFilter] = useState<ReelFilter>("all");
+  const [filterOpen, setFilterOpen] = useState(false);
 
   // Selection mode
   const [selecting, setSelecting] = useState(false);
@@ -208,19 +211,20 @@ export default function ReelsPage() {
               )}
             </div>
           ) : (
-            <div className="flex gap-1">
-              {(["all", "matched", "cloned"] as const).map((f) => (
-                <Button
-                  key={f}
-                  size="sm"
-                  variant={filter === f ? "default" : "outline"}
-                  className="h-7 text-xs px-2.5"
-                  onClick={() => setFilter(f)}
-                >
-                  {f === "all" ? "All" : f === "cloned" ? "Cloned" : "Matched"}
-                </Button>
-              ))}
-            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setFilterOpen(true)}
+              className="relative"
+            >
+              <Faders className="h-4 w-4 mr-1" />
+              Filters
+              {filter !== "all" && (
+                <Badge className="absolute -top-2 -right-2 h-4 min-w-4 px-1 text-[10px] leading-none flex items-center justify-center">
+                  1
+                </Badge>
+              )}
+            </Button>
           )}
           <div className="flex items-center gap-2">
             {!selecting && (
@@ -228,7 +232,7 @@ export default function ReelsPage() {
                 <Button
                   size="sm"
                   variant={view === "grid" ? "default" : "ghost"}
-                  className="h-8 w-8 p-0 rounded-r-none"
+                  className="h-10 w-10 p-0 rounded-r-none"
                   onClick={() => setView("grid")}
                   title="Grid view"
                 >
@@ -237,7 +241,7 @@ export default function ReelsPage() {
                 <Button
                   size="sm"
                   variant={view === "list" ? "default" : "ghost"}
-                  className="h-8 w-8 p-0 rounded-l-none"
+                  className="h-10 w-10 p-0 rounded-l-none"
                   onClick={() => setView("list")}
                   title="List view"
                 >
@@ -407,7 +411,7 @@ export default function ReelsPage() {
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-7 text-xs text-muted-foreground"
+                  className="h-10 text-xs text-muted-foreground"
                   onClick={() => setSortNewestFirst((v) => !v)}
                 >
                   {sortNewestFirst ? (
@@ -526,6 +530,23 @@ export default function ReelsPage() {
           )}
         </>
       )}
+
+      {/* No results after filtering */}
+      {!isLoading && reels.length > 0 && filteredReels.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
+          <p className="text-sm text-muted-foreground">No reels match the current filter.</p>
+          <Button variant="link" size="sm" onClick={() => setFilter("all")}>
+            Clear filter
+          </Button>
+        </div>
+      )}
+
+      <ReelFilterSheet
+        open={filterOpen}
+        onOpenChange={setFilterOpen}
+        filter={filter}
+        onFilterChange={setFilter}
+      />
 
       <TrialReelDialog
         open={showTrialDialog}

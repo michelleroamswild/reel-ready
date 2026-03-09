@@ -17,6 +17,7 @@ This is likely a screen recording or download from TikTok/Instagram/YouTube. You
 - EXCLUDE: "TikTok", "@username", any @mentions, hashtags (#), like/comment/share/bookmark buttons, follower counts, profile pictures, platform logos, "Original Sound" labels, caption text pinned to the bottom of the screen, and any other platform chrome.
 - For textOverlay fields, ONLY include text that the creator intentionally placed as part of their video content (styled text overlays, titles, storytelling captions that are part of the creative edit).
 - Platform captions, watermarks, and usernames are NOT text overlays — do not include them.
+- In visualDescription, do NOT mention usernames, screen recordings, screen darkening effects, platform UI transitions, or any artifacts from the recording process. Describe only the actual creative content shown (the subject, scene, camera movement, etc.).
 
 Analyze the video carefully and identify:
 1. Every distinct visual segment/cut (when the background scene or clip changes)
@@ -54,6 +55,8 @@ Guidelines:
 - If text appears or changes within the same visual scene, note the text but keep it as one segment
 - ONLY include creator text overlays — NEVER include TikTok watermarks, @usernames, hashtags, or platform captions
 - For energy: "low" = calm/slow, "medium" = moderate pace, "high" = fast/intense
+- DO NOT create segments for platform outros, end screens, or moments where the scene darkens to show a username/logo/follow button. These are not creative content — skip them entirely and end the previous segment where the actual content ends.
+- If the video fades to black, dims, or darkens at the end to display a username or branding, that is NOT a segment. Exclude it from the template.
 
 Only return the JSON, nothing else.`;
 
@@ -137,6 +140,10 @@ function stripPlatformText(obj: Record<string, unknown>) {
     /\bOriginal\s*Sound\b/gi,
     /\bFYP\b/gi,
     /\bFor\s*You\b/gi,
+    /\bscreen\s*darken(s|ing|ed)?\b/gi,
+    /\bscreen\s*recording\b/gi,
+    /\busername\b/gi,
+    /\bwatermark\b/gi,
   ];
 
   function clean(str: string): string {
@@ -162,6 +169,47 @@ function stripPlatformText(obj: Record<string, unknown>) {
   }
 
   walk(obj);
+}
+
+const OUTRO_PATTERNS = [
+  /\bdarken/i,
+  /\bdark(er|ened|ens|s)?\b/i,
+  /\bfade\s*(to|out)\b/i,
+  /\blogo\b/i,
+  /\busername\b/i,
+  /\bfollow\b/i,
+  /\bend\s*screen\b/i,
+  /\boutro\b/i,
+  /\bsubscribe\b/i,
+  /\bbranding\b/i,
+];
+
+/** Remove segments that look like platform outros (darkened screens, username/logo cards). */
+function stripOutroSegments(template: Record<string, unknown>) {
+  const segments = template.segments as Array<Record<string, unknown>> | undefined;
+  if (!Array.isArray(segments) || segments.length <= 1) return;
+
+  const filtered = segments.filter((seg) => {
+    const desc = ((seg.visualDescription as string) || "").toLowerCase();
+    const matchCount = OUTRO_PATTERNS.reduce(
+      (count, p) => count + (p.test(desc) ? 1 : 0),
+      0
+    );
+    // If the description matches 2+ outro patterns, it's likely an end screen
+    return matchCount < 2;
+  });
+
+  if (filtered.length > 0 && filtered.length < segments.length) {
+    template.segments = filtered;
+    template.segmentCount = filtered.length;
+    // Reindex and recalculate duration
+    let totalDuration = 0;
+    for (let i = 0; i < filtered.length; i++) {
+      filtered[i].index = i;
+      totalDuration += (filtered[i].durationSeconds as number) || 0;
+    }
+    template.totalDurationSeconds = totalDuration;
+  }
 }
 
 const BROWSER_UA =
@@ -349,6 +397,9 @@ Deno.serve(async (req) => {
 
     // Strip platform watermark/UI text from results
     stripPlatformText(template);
+
+    // Remove outro/end-screen segments (darkening, username, logo, follow screens)
+    stripOutroSegments(template);
 
     return new Response(JSON.stringify({ template }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

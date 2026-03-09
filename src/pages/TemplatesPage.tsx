@@ -137,7 +137,8 @@ export default function TemplatesPage() {
             return (
               <div
                 key={t.id}
-                className="rounded-lg border bg-card p-3 space-y-2"
+                className="rounded-lg border bg-card p-3 space-y-2 cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => navigate(`/templates/${t.id}`)}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
@@ -185,7 +186,7 @@ export default function TemplatesPage() {
                   <Button
                     size="sm"
                     className="flex-1"
-                    onClick={() => handleUseTemplate(tmpl)}
+                    onClick={(e) => { e.stopPropagation(); handleUseTemplate(tmpl); }}
                   >
                     <Play className="h-3.5 w-3.5 mr-1" /> Use Template
                   </Button>
@@ -193,7 +194,7 @@ export default function TemplatesPage() {
                     size="sm"
                     variant="outline"
                     className="text-destructive hover:text-destructive"
-                    onClick={() => setDeleteTarget(t)}
+                    onClick={(e) => { e.stopPropagation(); setDeleteTarget(t); }}
                   >
                     <Trash className="h-3.5 w-3.5" />
                   </Button>
