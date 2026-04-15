@@ -4,8 +4,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/auth-context";
+import { MobilePreviewProvider, useMobilePreview } from "@/contexts/mobile-preview-context";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { BottomNav } from "@/components/BottomNav";
+import { TopNav } from "@/components/TopNav";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import LoginPage from "@/pages/LoginPage";
 import PhrasesPage from "@/pages/PhrasesPage";
@@ -19,70 +21,100 @@ import AccountPage from "@/pages/AccountPage";
 import TemplatesPage from "@/pages/TemplatesPage";
 import TemplateDetailPage from "@/pages/TemplateDetailPage";
 import InstagramCallbackPage from "@/pages/InstagramCallbackPage";
+import DesignSystemPage from "@/pages/DesignSystemPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+
+function AppRoutes() {
+  const { isMobilePreview } = useMobilePreview();
+
+  // When mobile preview is active, force mobile-width containers and show BottomNav
+  const mainPagesClass = isMobilePreview
+    ? "mx-auto max-w-[390px] px-4 pt-16 pb-20"
+    : "mx-auto max-w-lg px-4 pt-4 pb-20 md:max-w-5xl md:pt-16 md:pb-6";
+
+  const wideClass = isMobilePreview
+    ? "mx-auto max-w-[390px] px-4 pt-16 pb-20"
+    : "mx-auto max-w-6xl px-4 pt-4 pb-20 md:pt-16 md:pb-6";
+
+  const medClass = isMobilePreview
+    ? "mx-auto max-w-[390px] px-4 pt-16 pb-20"
+    : "mx-auto max-w-4xl px-4 pt-4 pb-20 md:pt-16 md:pb-6";
+
+  const narrowClass = isMobilePreview
+    ? "mx-auto max-w-[390px] px-4 pt-16 pb-20"
+    : "mx-auto max-w-lg px-4 pt-4 pb-20 md:max-w-2xl md:pt-16 md:pb-6";
+
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="*" element={
+        <ProtectedRoute>
+          <TopNav />
+          <PullToRefresh>
+            <Routes>
+              <Route path="/videos/:id" element={
+                <main className={medClass}>
+                  <VideoDetailPage />
+                </main>
+              } />
+              <Route path="/reels/:id" element={
+                <main className={wideClass}>
+                  <ReelBuilderPage />
+                </main>
+              } />
+              <Route path="/instagram/callback" element={
+                <main className={narrowClass}>
+                  <InstagramCallbackPage />
+                </main>
+              } />
+              <Route path="/templates/:id" element={
+                <main className={narrowClass}>
+                  <TemplateDetailPage />
+                </main>
+              } />
+              <Route path="/trials/:batchId" element={
+                <main className={wideClass}>
+                  <TrialBatchPage />
+                </main>
+              } />
+              <Route path="*" element={
+                <main className={mainPagesClass}>
+                  <Routes>
+                    <Route path="/" element={<ReelsPage />} />
+                    <Route path="/phrases" element={<PhrasesPage />} />
+                    <Route path="/videos" element={<VideosPage />} />
+                    <Route path="/templates" element={<TemplatesPage />} />
+                    <Route path="/trends" element={<TrendsPage />} />
+                    <Route path="/account" element={<AccountPage />} />
+                    <Route path="/design-system" element={<DesignSystemPage />} />
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </main>
+              } />
+            </Routes>
+          </PullToRefresh>
+          <BottomNav />
+        </ProtectedRoute>
+      } />
+    </Routes>
+  );
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <TooltipProvider>
-        <div className="min-h-screen bg-background text-foreground">
+        <MobilePreviewProvider>
+          <div className="min-h-screen bg-background text-foreground">
             <Toaster />
             <Sonner />
             <BrowserRouter>
-              <Routes>
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="*" element={
-                  <ProtectedRoute>
-                    <PullToRefresh>
-                      <Routes>
-                        <Route path="/videos/:id" element={
-                          <main className="mx-auto max-w-4xl px-4 pt-4 pb-20">
-                            <VideoDetailPage />
-                          </main>
-                        } />
-                        <Route path="/reels/:id" element={
-                          <main className="mx-auto max-w-6xl px-4 pt-4 pb-20">
-                            <ReelBuilderPage />
-                          </main>
-                        } />
-                        <Route path="/instagram/callback" element={
-                          <main className="mx-auto max-w-lg px-4 pt-4 pb-20">
-                            <InstagramCallbackPage />
-                          </main>
-                        } />
-                        <Route path="/templates/:id" element={
-                          <main className="mx-auto max-w-lg px-4 pt-4 pb-20">
-                            <TemplateDetailPage />
-                          </main>
-                        } />
-                        <Route path="/trials/:batchId" element={
-                          <main className="mx-auto max-w-6xl px-4 pt-4 pb-20">
-                            <TrialBatchPage />
-                          </main>
-                        } />
-                        <Route path="*" element={
-                          <main className="mx-auto max-w-lg px-4 pt-4 pb-20">
-                            <Routes>
-                              <Route path="/" element={<ReelsPage />} />
-                              <Route path="/phrases" element={<PhrasesPage />} />
-                              <Route path="/videos" element={<VideosPage />} />
-                              <Route path="/templates" element={<TemplatesPage />} />
-                              <Route path="/trends" element={<TrendsPage />} />
-                              <Route path="/account" element={<AccountPage />} />
-                              <Route path="*" element={<NotFound />} />
-                            </Routes>
-                          </main>
-                        } />
-                      </Routes>
-                    </PullToRefresh>
-                    <BottomNav />
-                  </ProtectedRoute>
-                } />
-              </Routes>
+              <AppRoutes />
             </BrowserRouter>
-        </div>
+          </div>
+        </MobilePreviewProvider>
       </TooltipProvider>
     </AuthProvider>
   </QueryClientProvider>

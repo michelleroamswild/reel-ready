@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { ChatText, FilmStrip, VideoCamera, TrendUp, UserCircle } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { useMobilePreview } from "@/contexts/mobile-preview-context";
 
 const links = [
   { to: "/", label: "Reels", icon: VideoCamera },
@@ -11,9 +12,14 @@ const links = [
 ];
 
 export function BottomNav() {
+  const { isMobilePreview } = useMobilePreview();
+
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-card/80 backdrop-blur-md">
-      <div className="mx-auto flex max-w-lg px-4">
+    <nav className={cn(
+      "fixed bottom-0 left-0 right-0 z-50 border-t bg-card/80 backdrop-blur-md",
+      !isMobilePreview && "md:hidden"
+    )}>
+      <div className="mx-auto flex max-w-[390px] px-4">
         {links.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
