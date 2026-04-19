@@ -329,7 +329,7 @@ export default function ReelsPage() {
                     }`}
                     onClick={() => selecting ? toggleSelect(reel.id) : navigate(`/reels/${reel.id}`)}
                   >
-                    <div className="relative aspect-[9/16]">
+                    <div className="relative aspect-[3/4]">
                       {firstSeg?.video?.url ? (
                         <VideoThumbnail
                           src={`${firstSeg.video.url}#t=${firstSeg.start_seconds}`}
@@ -355,6 +355,11 @@ export default function ReelsPage() {
                           )}
                         </div>
                       ) : (
+                        <span className="absolute top-1.5 left-1.5 text-[10px] text-white bg-black/40 rounded px-1.5 py-0.5 leading-none">
+                          {dateStr}
+                        </span>
+                      )}
+                      {!selecting && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
@@ -381,7 +386,6 @@ export default function ReelsPage() {
                       )}
                     </div>
                     <div className="p-2 space-y-1">
-                      <span className="text-[10px] text-muted-foreground">{dateStr}</span>
                       <p className="text-xs font-medium truncate">{reel.title}</p>
                       <p className="text-[10px] text-muted-foreground line-clamp-2 leading-snug">
                         {reel.phrase?.text ??
@@ -390,16 +394,6 @@ export default function ReelsPage() {
                             ? `Cloned · ${reel.source_template.overallMood}`
                             : "")}
                       </p>
-                      <div className="flex gap-1.5 flex-wrap">
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                          {reel.reel_segments.length} clip{reel.reel_segments.length !== 1 ? "s" : ""}
-                        </Badge>
-                        {reel.source_template && (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                            Cloned
-                          </Badge>
-                        )}
-                      </div>
                     </div>
                   </div>
                 );
