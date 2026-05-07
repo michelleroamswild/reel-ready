@@ -7,7 +7,6 @@ import { useGenerateTrialReelsFromVideo } from "@/hooks/use-trial-reels";
 import { CloneReelDialog } from "@/components/CloneReelDialog";
 import { TrialReelDialog } from "@/components/TrialReelDialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,7 +23,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import {
   VideoCamera,
@@ -63,12 +61,10 @@ export default function ReelsPage() {
   const [filter, setFilter] = useState<ReelFilter>("all");
   const [filterOpen, setFilterOpen] = useState(false);
 
-  // Selection mode
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showBatchDelete, setShowBatchDelete] = useState(false);
 
-  // Batch export
   const { isExporting, progress, startExport, reset: resetExport } = useExportReel();
   const [batchExportIndex, setBatchExportIndex] = useState(-1);
   const [batchExportTotal, setBatchExportTotal] = useState(0);
@@ -88,9 +84,7 @@ export default function ReelsPage() {
   }, []);
 
   const handleBatchDelete = useCallback(() => {
-    for (const id of selected) {
-      deleteReel(id);
-    }
+    for (const id of selected) deleteReel(id);
     setShowBatchDelete(false);
     exitSelecting();
   }, [selected, deleteReel, exitSelecting]);
@@ -106,10 +100,7 @@ export default function ReelsPage() {
       setBatchExportIndex(i);
       resetExport();
 
-      const safeName = reel.title
-        .replace(/[^a-zA-Z0-9_-]/g, "_")
-        .slice(0, 50)
-        .toLowerCase();
+      const safeName = reel.title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 50).toLowerCase();
 
       const parsedSize = (() => {
         const s = reel.text_size;
@@ -153,17 +144,24 @@ export default function ReelsPage() {
     return true;
   });
 
+  const sortedReels = [...filteredReels].sort((a, b) => {
+    const diff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    return sortNewestFirst ? diff : -diff;
+  });
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between mb-2">
-        <h1 className="text-lg font-semibold">Reels</h1>
-        <div className="flex gap-2">
+    <div className="space-y-6 fade-up">
+      {/* Editorial header */}
+      <header className="space-y-3 pb-1">
+        <span className="eyebrow">Library</span>
+        <div className="flex items-end justify-between gap-4">
+          <h1 className="ed-display text-[44px] md:text-[64px] text-ink">Reels</h1>
           {!selecting && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="sm">
-                  <Plus className="h-4 w-4 mr-1" /> New Reel
-                  <CaretDown className="h-3 w-3 ml-1" />
+                <Button className="rounded-full bg-brand text-brand-ink hover:bg-brand/90 font-semibold h-9 px-4 shrink-0">
+                  <Plus className="h-4 w-4 mr-1" weight="bold" /> New
+                  <CaretDown className="h-3 w-3 ml-1.5 opacity-80" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -180,20 +178,25 @@ export default function ReelsPage() {
             </DropdownMenu>
           )}
         </div>
-      </div>
+        <p className="text-[13px] text-muted-foreground">
+          {filter === "all"
+            ? `${reels.length} reel${reels.length !== 1 ? "s" : ""} · ${reels.filter((r) => r.source_template).length} cloned`
+            : `${filteredReels.length} of ${reels.length}`}
+        </p>
+      </header>
 
+      {/* Toolbar */}
       {reels.length > 0 && (
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           {selecting ? (
             <div className="flex items-center gap-2">
-              <p className="text-sm text-muted-foreground">
-                {selected.size} selected
-              </p>
+              <span className="text-[13px] font-medium text-ink">{selected.size} selected</span>
               {selected.size > 0 && (
                 <>
                   <Button
                     size="sm"
                     variant="outline"
+                    className="h-8 rounded-full border-hairline-strong"
                     onClick={handleBatchExport}
                     disabled={isBatchExporting}
                   >
@@ -202,7 +205,7 @@ export default function ReelsPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="text-destructive hover:text-destructive"
+                    className="h-8 rounded-full border-hairline-strong text-destructive hover:text-destructive"
                     onClick={() => setShowBatchDelete(true)}
                   >
                     <Trash className="h-4 w-4 mr-1" /> Delete
@@ -215,50 +218,39 @@ export default function ReelsPage() {
               variant="outline"
               size="sm"
               onClick={() => setFilterOpen(true)}
-              className="relative"
+              className="h-8 rounded-full border-hairline-strong relative"
             >
-              <Faders className="h-4 w-4 mr-1" />
+              <Faders className="h-4 w-4 mr-1.5" />
               Filters
-              {filter !== "all" && (
-                <Badge className="absolute -top-2 -right-2 h-4 min-w-4 px-1 text-[10px] leading-none flex items-center justify-center">
-                  1
-                </Badge>
-              )}
+              {filter !== "all" && <span className="ml-1.5 accent-dot" />}
             </Button>
           )}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             {!selecting && (
-              <div className="flex border rounded-md">
-                <Button
-                  size="sm"
-                  variant={view === "grid" ? "default" : "ghost"}
-                  className="h-10 w-10 p-0 rounded-r-none"
+              <div className="flex items-center bg-surface-2 rounded-full p-0.5">
+                <button
                   onClick={() => setView("grid")}
+                  className={`h-7 w-8 grid place-items-center rounded-full transition-colors ${view === "grid" ? "bg-mist text-ink shadow-sm" : "text-muted-foreground hover:text-ink"}`}
                   title="Grid view"
                 >
                   <SquaresFour className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="sm"
-                  variant={view === "list" ? "default" : "ghost"}
-                  className="h-10 w-10 p-0 rounded-l-none"
+                </button>
+                <button
                   onClick={() => setView("list")}
+                  className={`h-7 w-8 grid place-items-center rounded-full transition-colors ${view === "list" ? "bg-mist text-ink shadow-sm" : "text-muted-foreground hover:text-ink"}`}
                   title="List view"
                 >
                   <List className="h-4 w-4" />
-                </Button>
+                </button>
               </div>
             )}
             <Button
               size="sm"
-              variant={selecting ? "default" : "outline"}
-              onClick={() => selecting ? exitSelecting() : setSelecting(true)}
+              variant="ghost"
+              className="h-8 px-3 rounded-full text-[13px]"
+              onClick={() => (selecting ? exitSelecting() : setSelecting(true))}
             >
-              {selecting ? (
-                <><X className="h-4 w-4 mr-1" /> Cancel</>
-              ) : (
-                "Select"
-              )}
+              {selecting ? (<><X className="h-4 w-4 mr-1" /> Cancel</>) : "Select"}
             </Button>
           </div>
         </div>
@@ -266,272 +258,236 @@ export default function ReelsPage() {
 
       {/* Batch export progress */}
       {isBatchExporting && (
-        <div className="rounded-lg border bg-muted/50 p-3 space-y-2">
-          <p className="text-sm font-medium">
-            Exporting reel {batchExportIndex + 1} of {batchExportTotal}...
+        <div className="rounded-xl border border-hairline bg-surface px-4 py-3 space-y-2">
+          <p className="text-[13px] font-medium text-ink">
+            Exporting reel {batchExportIndex + 1} of {batchExportTotal}…
           </p>
-          <Progress
-            value={Math.round((progress?.overallProgress ?? 0) * 100)}
-            className="h-2"
-          />
+          <div className="progress-hair">
+            <i style={{ width: `${Math.round((progress?.overallProgress ?? 0) * 100)}%` }} />
+          </div>
         </div>
       )}
 
+      {/* Body */}
       {isLoading ? (
-        <p className="text-sm text-muted-foreground text-center py-8">
-          Loading...
-        </p>
+        <p className="text-sm text-muted-foreground text-center py-12">Loading…</p>
       ) : reels.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
-          <VideoCamera className="h-12 w-12 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground max-w-xs">
-            No reels yet. Clone a trending reel or generate trial variants!
+        <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+          <div className="grid place-items-center h-14 w-14 rounded-full bg-surface-2">
+            <VideoCamera className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <p className="text-[14px] text-muted-foreground max-w-xs">
+            No reels yet. Clone a trending reel or generate trial variants.
           </p>
           <div className="flex gap-2">
             <Button
               variant="outline"
               size="sm"
+              className="rounded-full border-hairline-strong"
               onClick={() => setShowCloneDialog(true)}
             >
               <LinkSimple className="h-4 w-4 mr-1" /> Clone Reel
             </Button>
             <Button
               size="sm"
+              className="rounded-full bg-brand text-brand-ink hover:bg-brand/90"
               onClick={() => setShowTrialDialog(true)}
             >
               <Flask className="h-4 w-4 mr-1" /> Trial Reels
             </Button>
           </div>
         </div>
-      ) : (
-        <>
-          {view === "grid" ? (
-            <div className="grid grid-cols-3 gap-3">
-              {filteredReels.map((reel) => {
-                const totalDuration = reel.reel_segments.reduce(
-                  (sum, seg) => sum + (seg.end_seconds - seg.start_seconds),
-                  0
-                );
-                const firstSeg = reel.reel_segments[0];
-                const date = new Date(reel.created_at);
-                const dateStr = date.toLocaleDateString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                  year: date.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
-                });
-                const isSelected = selected.has(reel.id);
+      ) : view === "grid" ? (
+        <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          {sortedReels.map((reel) => {
+            const totalDuration = reel.reel_segments.reduce(
+              (sum, seg) => sum + (seg.end_seconds - seg.start_seconds),
+              0
+            );
+            const firstSeg = reel.reel_segments[0];
+            const isSelected = selected.has(reel.id);
+            const cloned = !!reel.source_template;
 
-                return (
-                  <div
-                    key={reel.id}
-                    className={`rounded-lg border bg-card overflow-hidden cursor-pointer transition-colors group ${
-                      isSelected ? "ring-2 ring-primary" : "hover:border-primary/50"
-                    }`}
-                    onClick={() => selecting ? toggleSelect(reel.id) : navigate(`/reels/${reel.id}`)}
-                  >
-                    <div className="relative aspect-[3/4]">
-                      {firstSeg?.video?.url ? (
-                        <VideoThumbnail
-                          src={`${firstSeg.video.url}#t=${firstSeg.start_seconds}`}
-                          thumbnailUrl={firstSeg.video.thumbnail_url}
-                          className="w-full h-full"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-black flex items-center justify-center">
-                          <VideoCamera className="h-8 w-8 text-white/30" />
-                        </div>
-                      )}
-                      <div className="absolute bottom-1.5 right-1.5">
-                        <Badge variant="secondary" className="bg-black/60 text-white text-[10px] border-0 px-1.5 py-0">
-                          {formatDuration(Math.round(totalDuration))}
-                        </Badge>
-                      </div>
-                      {selecting ? (
-                        <div className="absolute top-1.5 left-1.5">
-                          {isSelected ? (
-                            <CheckSquare className="h-5 w-5 text-primary drop-shadow" weight="fill" />
-                          ) : (
-                            <Square className="h-5 w-5 text-white/70 drop-shadow" />
-                          )}
-                        </div>
-                      ) : (
-                        <span className="absolute top-1.5 left-1.5 text-[10px] text-white bg-black/40 rounded px-1.5 py-0.5 leading-none">
-                          {dateStr}
-                        </span>
-                      )}
-                      {!selecting && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="absolute top-1 right-1 h-6 w-6 bg-black/40 hover:bg-black/60 text-white"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <DotsThree className="h-4 w-4" weight="bold" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                            <DropdownMenuItem onClick={() => navigate(`/reels/${reel.id}?export=true`)}>
-                              <Export className="h-4 w-4 mr-2" /> Export
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() => setDeleteTarget(reel)}
-                            >
-                              <Trash className="h-4 w-4 mr-2" /> Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                    </div>
-                    <div className="p-2 space-y-1">
-                      <p className="text-xs font-medium truncate">{reel.title}</p>
-                      <p className="text-[10px] text-muted-foreground line-clamp-2 leading-snug">
-                        {reel.phrase?.text ??
-                          reel.reel_segments[0]?.section_text ??
-                          (reel.source_template
-                            ? `Cloned · ${reel.source_template.overallMood}`
-                            : "")}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex justify-end mb-2">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-10 text-xs text-muted-foreground"
-                  onClick={() => setSortNewestFirst((v) => !v)}
-                >
-                  {sortNewestFirst ? (
-                    <SortDescending className="h-3.5 w-3.5 mr-1" />
+            return (
+              <article
+                key={reel.id}
+                className={`group cursor-pointer ${isSelected ? "ring-2 ring-brand rounded-xl" : ""}`}
+                onClick={() => (selecting ? toggleSelect(reel.id) : navigate(`/reels/${reel.id}`))}
+              >
+                <div className="reel-thumb hoverable border border-hairline">
+                  {firstSeg?.video?.url ? (
+                    <VideoThumbnail
+                      src={`${firstSeg.video.url}#t=${firstSeg.start_seconds}`}
+                      thumbnailUrl={firstSeg.video.thumbnail_url}
+                      className="w-full h-full"
+                    />
                   ) : (
-                    <SortAscending className="h-3.5 w-3.5 mr-1" />
-                  )}
-                  {sortNewestFirst ? "Newest first" : "Oldest first"}
-                </Button>
-              </div>
-              {[...filteredReels]
-                .sort((a, b) => {
-                  const diff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-                  return sortNewestFirst ? diff : -diff;
-                })
-                .map((reel) => {
-                  const totalDuration = reel.reel_segments.reduce(
-                    (sum, seg) => sum + (seg.end_seconds - seg.start_seconds),
-                    0
-                  );
-                  const firstSeg = reel.reel_segments[0];
-                  const date = new Date(reel.created_at);
-                  const dateStr = date.toLocaleDateString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                    year: date.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
-                  });
-                  const isSelected = selected.has(reel.id);
-
-                  return (
-                    <div
-                      key={reel.id}
-                      className={`rounded-lg border bg-card overflow-hidden cursor-pointer transition-colors group flex ${
-                        isSelected ? "ring-2 ring-primary" : "hover:bg-accent"
-                      }`}
-                      onClick={() => selecting ? toggleSelect(reel.id) : navigate(`/reels/${reel.id}`)}
-                    >
-                      {selecting && (
-                        <div className="shrink-0 w-10 flex items-center justify-center">
-                          {isSelected ? (
-                            <CheckSquare className="h-5 w-5 text-primary" weight="fill" />
-                          ) : (
-                            <Square className="h-5 w-5 text-muted-foreground" />
-                          )}
-                        </div>
-                      )}
-                      <div className="shrink-0 w-14">
-                        {firstSeg?.video?.url ? (
-                          <VideoThumbnail
-                            src={`${firstSeg.video.url}#t=${firstSeg.start_seconds}`}
-                            thumbnailUrl={firstSeg.video.thumbnail_url}
-                            className="w-full aspect-[9/16]"
-                            iconSize="sm"
-                          />
-                        ) : (
-                          <div className="w-full aspect-[9/16] bg-black flex items-center justify-center">
-                            <VideoCamera className="h-4 w-4 text-white/30" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0 p-2.5 flex items-center gap-3">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{reel.title}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-                            {reel.phrase?.text ??
-                              reel.reel_segments[0]?.section_text ??
-                              (reel.source_template
-                                ? `Cloned · ${reel.source_template.overallMood}`
-                                : "")}
-                          </p>
-                        </div>
-                        <div className="shrink-0 flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">{dateStr}</span>
-                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                            {reel.reel_segments.length} clip{reel.reel_segments.length !== 1 ? "s" : ""}
-                          </Badge>
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                            {formatDuration(Math.round(totalDuration))}
-                          </Badge>
-                          {reel.source_template && (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                              Cloned
-                            </Badge>
-                          )}
-                          {!selecting && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 shrink-0"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <DotsThree className="h-4 w-4" weight="bold" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                                <DropdownMenuItem onClick={() => navigate(`/reels/${reel.id}?export=true`)}>
-                                  <Export className="h-4 w-4 mr-2" /> Export
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="text-destructive focus:text-destructive"
-                                  onClick={() => setDeleteTarget(reel)}
-                                >
-                                  <Trash className="h-4 w-4 mr-2" /> Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
-                        </div>
-                      </div>
+                    <div className="w-full h-full thumb-placeholder grid place-items-center">
+                      <VideoCamera className="h-6 w-6 text-white/40" />
                     </div>
-                  );
-                })}
-            </div>
-          )}
-        </>
+                  )}
+                  <div className="scrim-bottom" />
+
+                  {/* Top-left: select / cloned badge */}
+                  {selecting ? (
+                    <div className="absolute top-2 left-2 z-10">
+                      {isSelected ? (
+                        <CheckSquare className="h-5 w-5 text-brand drop-shadow" weight="fill" />
+                      ) : (
+                        <Square className="h-5 w-5 text-white/85 drop-shadow" />
+                      )}
+                    </div>
+                  ) : cloned ? (
+                    <span className="badge !bg-brand !text-brand-ink">Cloned</span>
+                  ) : null}
+
+                  {/* Top-right: menu */}
+                  {!selecting && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          className="absolute top-1.5 right-1.5 z-10 h-7 w-7 grid place-items-center rounded-full bg-black/40 text-white hover:bg-black/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <DotsThree className="h-4 w-4" weight="bold" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenuItem onClick={() => navigate(`/reels/${reel.id}?export=true`)}>
+                          <Export className="h-4 w-4 mr-2" /> Export
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => setDeleteTarget(reel)}
+                        >
+                          <Trash className="h-4 w-4 mr-2" /> Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+
+                  {/* Bottom: title + meta */}
+                  <div className="meta">
+                    <p className="text-[12px] font-semibold tracking-tight leading-tight line-clamp-2 drop-shadow-sm">
+                      {reel.title}
+                    </p>
+                    <p className="mt-1 text-[10px] font-medium text-white/75 tracking-[0.02em]">
+                      {formatDuration(Math.round(totalDuration))} · {reel.reel_segments.length} clip{reel.reel_segments.length !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        // List view
+        <div className="space-y-2">
+          <div className="flex justify-end">
+            <button
+              onClick={() => setSortNewestFirst((v) => !v)}
+              className="flex items-center gap-1 text-[12px] text-muted-foreground hover:text-ink transition-colors"
+            >
+              {sortNewestFirst ? <SortDescending className="h-3.5 w-3.5" /> : <SortAscending className="h-3.5 w-3.5" />}
+              {sortNewestFirst ? "Newest first" : "Oldest first"}
+            </button>
+          </div>
+          {sortedReels.map((reel, idx) => {
+            const totalDuration = reel.reel_segments.reduce(
+              (sum, seg) => sum + (seg.end_seconds - seg.start_seconds),
+              0
+            );
+            const firstSeg = reel.reel_segments[0];
+            const date = new Date(reel.created_at);
+            const dateStr = date.toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+              year: date.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
+            });
+            const isSelected = selected.has(reel.id);
+
+            return (
+              <div
+                key={reel.id}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border bg-surface cursor-pointer transition-colors ${
+                  isSelected ? "border-brand ring-1 ring-brand" : "border-hairline hover:border-hairline-strong"
+                }`}
+                onClick={() => (selecting ? toggleSelect(reel.id) : navigate(`/reels/${reel.id}`))}
+              >
+                {selecting && (
+                  <div className="shrink-0">
+                    {isSelected ? (
+                      <CheckSquare className="h-5 w-5 text-brand" weight="fill" />
+                    ) : (
+                      <Square className="h-5 w-5 text-muted-foreground" />
+                    )}
+                  </div>
+                )}
+                <span className="font-mono text-[10px] tracking-[0.08em] text-muted-foreground w-6 shrink-0">
+                  {String(idx + 1).padStart(2, "0")}
+                </span>
+                <div className="shrink-0 w-12 rounded-md overflow-hidden">
+                  {firstSeg?.video?.url ? (
+                    <VideoThumbnail
+                      src={`${firstSeg.video.url}#t=${firstSeg.start_seconds}`}
+                      thumbnailUrl={firstSeg.video.thumbnail_url}
+                      className="w-full aspect-[9/16]"
+                      iconSize="sm"
+                    />
+                  ) : (
+                    <div className="w-full aspect-[9/16] thumb-placeholder" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[14px] font-semibold text-ink truncate tracking-tight">{reel.title}</p>
+                  <p className="text-[12px] text-muted-foreground line-clamp-1 mt-0.5">
+                    {reel.phrase?.text ??
+                      reel.reel_segments[0]?.section_text ??
+                      (reel.source_template ? `Cloned · ${reel.source_template.overallMood}` : "—")}
+                  </p>
+                </div>
+                <div className="shrink-0 hidden sm:flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <span>{dateStr}</span>
+                  <span className="chip chip-outline !text-[10.5px] !px-2 !py-1 !font-medium">
+                    {formatDuration(Math.round(totalDuration))}
+                  </span>
+                  {reel.source_template && (
+                    <span className="chip chip-accent !text-[10.5px] !px-2 !py-1">Cloned</span>
+                  )}
+                </div>
+                {!selecting && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        className="shrink-0 h-8 w-8 grid place-items-center rounded-full text-muted-foreground hover:bg-surface-2 hover:text-ink transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <DotsThree className="h-4 w-4" weight="bold" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenuItem onClick={() => navigate(`/reels/${reel.id}?export=true`)}>
+                        <Export className="h-4 w-4 mr-2" /> Export
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => setDeleteTarget(reel)}
+                      >
+                        <Trash className="h-4 w-4 mr-2" /> Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
 
-      {/* No results after filtering */}
       {!isLoading && reels.length > 0 && filteredReels.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
           <p className="text-sm text-muted-foreground">No reels match the current filter.</p>
-          <Button variant="link" size="sm" onClick={() => setFilter("all")}>
-            Clear filter
-          </Button>
+          <Button variant="link" size="sm" onClick={() => setFilter("all")}>Clear filter</Button>
         </div>
       )}
 
@@ -560,13 +516,8 @@ export default function ReelsPage() {
             });
             navigate(`/trials/${batchId}`);
           } catch (err) {
-            const message =
-              err instanceof Error ? err.message : "Something went wrong";
-            toast({
-              variant: "destructive",
-              title: "Failed to generate trial reels",
-              description: message,
-            });
+            const message = err instanceof Error ? err.message : "Something went wrong";
+            toast({ variant: "destructive", title: "Failed to generate trial reels", description: message });
           }
         }}
       />
@@ -581,17 +532,12 @@ export default function ReelsPage() {
         }}
       />
 
-      {/* Single delete */}
-      <AlertDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-      >
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete reel?</AlertDialogTitle>
             <AlertDialogDescription>
-              "{deleteTarget?.title}" and all its segments will be permanently
-              deleted.
+              "{deleteTarget?.title}" and all its segments will be permanently deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -609,7 +555,6 @@ export default function ReelsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Batch delete */}
       <AlertDialog open={showBatchDelete} onOpenChange={setShowBatchDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>

@@ -2,66 +2,101 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   ReelReady — Mist & Magenta design system
+   ============================================================ */
+
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 262 83% 58%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 262 83% 58%;
-    --radius: 0.375rem;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* shadcn semantic tokens (HSL fragments) */
+    --background: 240 4% 93%;          /* mist */
+    --foreground: 228 9% 9%;           /* ink */
+    --card: 240 7% 96%;                /* surface */
+    --card-foreground: 228 9% 9%;
+    --popover: 240 7% 96%;
+    --popover-foreground: 228 9% 9%;
+    --primary: 228 9% 9%;              /* ink — primary button is dark */
+    --primary-foreground: 240 4% 93%;
+    --secondary: 228 7% 87%;           /* surface-2 */
+    --secondary-foreground: 228 9% 9%;
+    --muted: 240 7% 96%;
+    --muted-foreground: 226 7% 45%;
+    --accent: 228 7% 87%;              /* shadcn "accent" = subtle hover bg, NOT brand */
+    --accent-foreground: 228 9% 9%;
+    --destructive: 0 67% 42%;
+    --destructive-foreground: 240 4% 93%;
+    --border: 226 6% 84%;              /* hairline */
+    --input: 226 6% 84%;
+    --ring: 333 75% 52%;               /* magenta focus ring */
+    --radius: 0.625rem;                /* 10px md */
+
+    /* Brand & semantic design tokens (HSL fragments) */
+    --ink: 228 9% 9%;
+    --ink-2: 225 9% 19%;
+    --muted-strong: 226 7% 45%;
+    --muted-2: 225 6% 66%;
+    --hairline: 226 6% 84%;
+    --hairline-strong: 227 6% 74%;
+    --surface: 240 7% 96%;
+    --surface-2: 228 7% 87%;
+    --mist: 240 4% 93%;
+    --brand: 333 75% 52%;              /* magenta accent */
+    --brand-soft: 335 84% 92%;
+    --brand-ink: 240 7% 96%;           /* text color on brand */
+    --ok: 162 92% 24%;
+    --danger: 0 67% 42%;
+
+    /* Sidebar (kept for shadcn sidebar component compatibility) */
+    --sidebar-background: 240 4% 93%;
+    --sidebar-foreground: 228 9% 9%;
+    --sidebar-primary: 228 9% 9%;
+    --sidebar-primary-foreground: 240 4% 93%;
+    --sidebar-accent: 228 7% 87%;
+    --sidebar-accent-foreground: 228 9% 9%;
+    --sidebar-border: 226 6% 84%;
+    --sidebar-ring: 333 75% 52%;
   }
 
   .dark {
-    --background: 240 6% 7%;
-    --foreground: 0 0% 95%;
-    --card: 240 5% 11%;
-    --card-foreground: 0 0% 95%;
-    --popover: 240 5% 11%;
-    --popover-foreground: 0 0% 95%;
-    --primary: 262 83% 58%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 240 4% 16%;
-    --secondary-foreground: 0 0% 95%;
-    --muted: 240 4% 16%;
-    --muted-foreground: 240 5% 55%;
-    --accent: 240 4% 16%;
-    --accent-foreground: 0 0% 95%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 4% 18%;
-    --input: 240 4% 18%;
-    --ring: 262 83% 58%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --background: 220 25% 7%;
+    --foreground: 218 22% 93%;
+    --card: 218 27% 11%;
+    --card-foreground: 218 22% 93%;
+    --popover: 218 27% 11%;
+    --popover-foreground: 218 22% 93%;
+    --primary: 218 22% 93%;
+    --primary-foreground: 220 25% 7%;
+    --secondary: 218 24% 15%;
+    --secondary-foreground: 218 22% 93%;
+    --muted: 218 27% 11%;
+    --muted-foreground: 220 9% 53%;
+    --accent: 218 24% 15%;
+    --accent-foreground: 218 22% 93%;
+    --destructive: 0 62% 41%;
+    --destructive-foreground: 218 22% 93%;
+    --border: 220 27% 19%;
+    --input: 220 27% 19%;
+    --ring: 333 75% 52%;
+
+    --ink: 218 22% 93%;
+    --ink-2: 218 17% 75%;
+    --muted-strong: 220 9% 53%;
+    --muted-2: 220 12% 35%;
+    --hairline: 220 27% 19%;
+    --hairline-strong: 220 22% 24%;
+    --surface: 218 27% 11%;
+    --surface-2: 218 24% 15%;
+    --mist: 220 25% 7%;
+    --brand-soft: 86 53% 12%;
+
+    --sidebar-background: 220 25% 7%;
+    --sidebar-foreground: 218 22% 93%;
+    --sidebar-primary: 218 22% 93%;
+    --sidebar-primary-foreground: 220 25% 7%;
+    --sidebar-accent: 218 24% 15%;
+    --sidebar-accent-foreground: 218 22% 93%;
+    --sidebar-border: 220 27% 19%;
+    --sidebar-ring: 333 75% 52%;
   }
 }
 
@@ -70,7 +105,205 @@
     @apply border-border;
   }
 
+  html, body {
+    font-family: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-feature-settings: "ss01", "cv11", "ss03";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Hide scrollbars on horizontal chip rails / scroll strips */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+}
+
+/* ============================================================
+   Primitive utility classes (mirror prototype styleguide)
+   ============================================================ */
+
+@layer components {
+  /* Editorial display headline — Bricolage Grotesque, tight tracking */
+  .ed-display {
+    font-family: "Bricolage Grotesque", ui-sans-serif, sans-serif;
+    font-weight: 800;
+    letter-spacing: -0.045em;
+    line-height: 0.92;
+    font-optical-sizing: auto;
+    font-variation-settings: "opsz" 96;
+  }
+  .ed-display-italic {
+    font-family: "Bricolage Grotesque", ui-sans-serif, sans-serif;
+    font-weight: 700;
+    font-style: italic;
+    letter-spacing: -0.03em;
+  }
+
+  /* Eyebrow — small label with a leading rule */
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.005em;
+    color: hsl(var(--muted-strong));
+    line-height: 1;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 18px;
+    height: 1px;
+    background: hsl(var(--ink));
+    display: inline-block;
+  }
+  .eyebrow-plain {
+    font-size: 11px;
+    font-weight: 500;
+    color: hsl(var(--muted-strong));
+    line-height: 1;
+  }
+
+  /* Chip — pill tag with variants */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    background: hsl(var(--surface-2));
+    color: hsl(var(--ink));
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .chip-outline {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px hsl(var(--hairline-strong));
+  }
+  .chip-accent {
+    background: hsl(var(--brand));
+    color: hsl(var(--brand-ink));
+    font-weight: 700;
+  }
+  .chip-dark {
+    background: hsl(var(--ink));
+    color: hsl(var(--mist));
+    font-weight: 700;
+  }
+  .chip-muted {
+    background: hsl(var(--surface-2));
+    color: hsl(var(--ink-2));
+    font-weight: 500;
+  }
+
+  /* Reel thumbnail — 9:16 portrait card */
+  .reel-thumb {
+    position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #000;
+    aspect-ratio: 9 / 16;
+  }
+  .reel-thumb .meta {
+    position: absolute;
+    inset: auto 8px 8px 8px;
+    color: #fff;
+    z-index: 2;
+  }
+  .reel-thumb .badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    padding: 3px 7px;
+    border-radius: 999px;
+    backdrop-filter: blur(6px);
+    z-index: 2;
+  }
+  .scrim-bottom {
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 60%;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0) 100%);
+    pointer-events: none;
+  }
+
+  /* Phrase card — numbered row */
+  .phrase-card {
+    padding: 16px 18px;
+    background: hsl(var(--surface));
+    border: 1px solid hsl(var(--hairline));
+    border-radius: 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    transition: border-color 200ms ease, transform 200ms ease;
+  }
+  .phrase-card:hover { border-color: hsl(var(--hairline-strong)); }
+  .phrase-card .num {
+    font-family: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    color: hsl(var(--muted-strong));
+    letter-spacing: 0.05em;
+    padding-top: 3px;
+    min-width: 28px;
+  }
+
+  /* Hairline progress bar */
+  .progress-hair {
+    height: 3px;
+    background: hsl(var(--hairline));
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .progress-hair > i {
+    display: block;
+    height: 100%;
+    background: hsl(var(--brand));
+    border-radius: inherit;
+    transition: width 320ms ease;
+  }
+
+  /* Hover lift for cards/thumbnails */
+  .hoverable {
+    transition: transform 220ms cubic-bezier(.2, .8, .2, 1), box-shadow 220ms ease, border-color 220ms ease;
+  }
+  .hoverable:hover {
+    transform: translateY(-1px);
+    border-color: hsl(var(--hairline-strong));
+  }
+
+  /* Striped placeholder (no image yet) */
+  .thumb-placeholder {
+    background: repeating-linear-gradient(45deg,
+      hsl(var(--surface-2)) 0 6px,
+      hsl(var(--surface)) 6px 12px);
+  }
+
+  /* Accent dot */
+  .accent-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: hsl(var(--brand));
+    display: inline-block;
+  }
+}
+
+@layer utilities {
+  /* Soft fade-up entrance */
+  @keyframes rr-fade-up {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .fade-up { animation: rr-fade-up 360ms cubic-bezier(.2, .8, .2, 1) both; }
 }

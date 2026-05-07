@@ -475,46 +475,12 @@ export default function ReelBuilderPage() {
   };
 
   return (
-    <div className="md:-mx-4 md:-mt-4 md:fixed md:inset-x-0 md:top-0 md:bottom-[4rem] md:px-8 md:pt-6 md:max-w-6xl md:mx-auto md:flex md:flex-col">
-      {/* Top header bar */}
-      <div className="flex items-center justify-between mb-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() =>
-            parentBatch?.base_reel
-              ? navigate(`/reels/${parentBatch.base_reel.id}`)
-              : navigate("/")
-          }
-        >
-          <ArrowLeft className="h-4 w-4 mr-1" /> {parentBatch?.base_reel ? "Back to reel" : "Reels"}
-        </Button>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowExport(true)}
-            disabled={reel.reel_segments.length === 0}
-          >
-            <Export className="h-4 w-4 mr-1" /> Export
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowTrialConfirm(true)}
-            disabled={reel.reel_segments.length === 0 || generateTrialReels.isPending}
-          >
-            <Flask className="h-4 w-4 mr-1" />
-            {generateTrialReels.isPending ? "Generating..." : "Trial Reels"}
-          </Button>
-        </div>
-      </div>
-
-      {/* Two-column body */}
-      <div className="flex flex-col md:flex-row md:gap-6 md:flex-1 md:min-h-0">
-      {/* Left: Preview */}
-      <div className="md:flex md:flex-col md:items-center md:justify-center md:w-1/2 shrink-0 md:h-full">
-        <div className="relative rounded-lg border bg-black overflow-hidden aspect-[9/16] h-full mx-auto" style={{ containerType: "inline-size" }}>
+    <div>
+      {/* Two-column body — video pinned on the LEFT, controls scroll on the RIGHT */}
+      <div className="flex flex-col md:flex-row md:items-start md:gap-8">
+      {/* LEFT (desktop) / TOP (mobile): Video preview — fully fixed in place */}
+      <div className="md:sticky md:top-10 md:self-start shrink-0 flex justify-center">
+        <div className="relative rounded-xl border border-hairline bg-black overflow-hidden aspect-[9/16] w-full md:w-auto md:h-[calc(100vh-5rem)] mx-auto" style={{ containerType: "inline-size" }}>
           {segments.length === 0 ? (
             <div className="w-full h-full flex items-center justify-center">
               <p className="text-sm text-white/50">No segments</p>
@@ -624,8 +590,8 @@ export default function ReelBuilderPage() {
         </div>
       </div>
 
-      {/* Right: Scrollable content */}
-      <div className="flex-1 min-w-0 space-y-4 md:pr-4 md:overflow-y-auto md:h-full">
+      {/* RIGHT (desktop) / BELOW (mobile): Scrollable controls column */}
+      <div className="flex-1 min-w-0 space-y-4 mt-6 md:mt-0">
 
       {/* Variant info banner (for variant reels) */}
       {reel.trial_batch_id && (() => {
@@ -689,11 +655,12 @@ export default function ReelBuilderPage() {
       })()}
 
       {/* Title + badges */}
-          <div className="space-y-1">
+          <div className="space-y-2">
+            <span className="eyebrow">Editor</span>
             {editingTitle ? (
               <input
                 autoFocus
-                className="text-lg font-semibold bg-transparent border-b border-primary outline-none w-full"
+                className="ed-display text-[32px] text-ink bg-transparent border-b-2 border-ink outline-none w-full"
                 value={titleDraft}
                 onChange={(e) => setTitleDraft(e.target.value)}
                 onBlur={() => {
@@ -708,33 +675,31 @@ export default function ReelBuilderPage() {
               />
             ) : (
               <h1
-                className="text-lg font-semibold truncate cursor-pointer hover:text-primary/80 transition-colors"
+                className="ed-display text-[32px] text-ink truncate cursor-pointer hover:text-ink-2 transition-colors"
                 onClick={() => { setTitleDraft(reel.title); setEditingTitle(true); }}
                 title="Click to edit"
               >
                 {reel.title}
               </h1>
             )}
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="secondary" className="text-xs">
-                {reel.reel_segments.length} segments
-              </Badge>
-              <Badge variant="outline" className="text-xs">
-                {Math.round(totalDuration)}s / {reel.target_duration_seconds}s target
-              </Badge>
+            <div className="flex flex-wrap gap-1.5">
+              <span className="chip chip-outline !text-[11px]">
+                {reel.reel_segments.length} segment{reel.reel_segments.length !== 1 ? "s" : ""}
+              </span>
+              <span className="chip chip-outline !text-[11px]">
+                {Math.round(totalDuration)}s / {reel.target_duration_seconds}s
+              </span>
             </div>
           </div>
 
           {/* Phrase card — shows text for selected segment */}
           {current && (
-            <div className="rounded-lg border bg-muted/50 p-3">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Phrase
-                </p>
+            <div className="rounded-xl border border-hairline bg-surface p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="eyebrow-plain">Phrase</span>
                 {segments.length > 1 && (
-                  <span className="text-[10px] text-muted-foreground">
-                    Segment {currentIndex + 1}/{segments.length}
+                  <span className="font-mono text-[10.5px] tracking-[0.05em] text-muted-foreground">
+                    {String(currentIndex + 1).padStart(2, "0")} / {String(segments.length).padStart(2, "0")}
                   </span>
                 )}
               </div>
@@ -1408,7 +1373,29 @@ export default function ReelBuilderPage() {
         </div>
       )}
 
-      </div>{/* end right column */}
+      {/* Sticky bottom action bar — Variants + Export pinned at bottom of controls column */}
+      <div className="mt-8 md:sticky md:bottom-0 md:z-30 md:py-3 md:bg-mist/90 md:backdrop-blur-md md:border-t md:border-hairline flex items-center justify-end gap-1.5">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowTrialConfirm(true)}
+          disabled={reel.reel_segments.length === 0 || generateTrialReels.isPending}
+          className="h-9 rounded-full border-hairline-strong"
+        >
+          <Flask className="h-4 w-4 mr-1.5" />
+          {generateTrialReels.isPending ? "Generating…" : "Variants"}
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => setShowExport(true)}
+          disabled={reel.reel_segments.length === 0}
+          className="h-9 rounded-full bg-brand text-brand-ink hover:bg-brand/90 font-semibold px-5"
+        >
+          <Export className="h-4 w-4 mr-1.5" weight="bold" /> Export
+        </Button>
+      </div>
+
+      </div>{/* end controls column */}
       </div>{/* end two-column body */}
 
       {/* Swap dialog */}
