@@ -1,3 +1,4 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getAuthUser } from "../_shared/auth.ts";
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!;
@@ -26,13 +27,14 @@ Deno.serve(async (req) => {
   }
 
   try {
-    await getAuthUser(req);
-    const { mood, tone, tense, iterateOn, segments } = (await req.json()) as {
+    const { userId } = await getAuthUser(req);
+    const { mood, tone, tense, iterateOn, segments, matchVoice } = (await req.json()) as {
       mood: string;
       tone: string;
       tense?: string;
       iterateOn?: string;
       segments: SegmentInput[];
+      matchVoice?: boolean;
     };
 
     if (!mood || !tone || !segments?.length) {
@@ -61,10 +63,40 @@ Deno.serve(async (req) => {
       })
       .join("\n\n");
 
+    // Optionally load the creator's distilled voice profile so captions sound like them.
+    let voiceBlock = "";
+    if (matchVoice) {
+      try {
+        const admin = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+        );
+        const { data: prof } = await admin
+          .from("account_profiles")
+          .select("voice_profile")
+          .eq("user_id", userId)
+          .eq("platform", "instagram")
+          .maybeSingle();
+        const vp = prof?.voice_profile as
+          | { text?: string; signatureHashtags?: string[] }
+          | null;
+        if (vp?.text) {
+          voiceBlock = `\n\nVOICE PROFILE — This is how THIS creator writes their captions. Match this voice exactly; it overrides the generic tone guidelines below where they conflict:\n${vp.text}`;
+          if (vp.signatureHashtags?.length) {
+            voiceBlock += `\nWhen relevant, reuse the hashtags this creator commonly uses: ${vp.signatureHashtags
+              .map((h) => `#${h}`)
+              .join(" ")}. Match their typical hashtag count and style.`;
+          }
+        }
+      } catch {
+        // Non-fatal: fall back to generic voice if the profile can't be loaded.
+      }
+    }
+
     const prompt = `You write social media captions for Instagram Reels and TikTok posts. Write captions that feel authentic and engaging — like a real creator posting, not a brand.
 
 REEL CONTENT:
-${segmentContext}
+${segmentContext}${voiceBlock}
 
 MOOD: ${mood}
 TONE: ${tone}${tense && tense !== "any" ? `\nTENSE: ${tense}. ${tense === "past" ? 'Write in past tense — the content already happened. For example prefer "loved every second of this" over "loving every second of this".' : tense === "reflective" ? 'Write in a reflective, looking-back tone — reminiscing or appreciating something that happened. For example "still thinking about this" or "one of those moments you never forget".' : 'Write in a timeless, tense-neutral way — no specific time reference. Avoid present progressive ("loving this") and explicit past tense. For example "nothing beats this" or "the kind of moment you hold onto".'}` : ""}

@@ -17,14 +17,31 @@ import {
   CheckCircle,
   User,
   ChartBar,
+  Sparkle,
+  ArrowClockwise,
+  PencilSimple,
 } from "@phosphor-icons/react";
 import { useToast } from "@/hooks/use-toast";
+import { useVoiceProfile } from "@/hooks/use-voice-profile";
 import type { Platform, PerformanceTrend } from "@/types/posting-strategy";
 
 export default function AccountPage() {
   const { user, signOut } = useAuth();
   const { profile, upsertProfile, isUpserting } = useAccountProfile();
+  const {
+    profile: voiceProfile,
+    updatedAt: voiceUpdatedAt,
+    buildProfile,
+    isBuilding,
+    updateProfileText,
+    isUpdatingText,
+  } = useVoiceProfile();
   const { toast } = useToast();
+
+  const [editingVoice, setEditingVoice] = useState(false);
+  const [voiceText, setVoiceText] = useState("");
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState("");
 
   const [platform, setPlatform] = useState<Platform>("instagram");
   const [postsPerWeek, setPostsPerWeek] = useState("");
@@ -57,6 +74,27 @@ export default function AccountPage() {
     setMetricsSaved(true);
     toast({ title: "Account metrics saved" });
     setTimeout(() => setMetricsSaved(false), 2000);
+  };
+
+  const handleBuildVoice = async (captions?: string[]) => {
+    try {
+      await buildProfile(captions ? { captions } : undefined);
+      setPasteOpen(false);
+      setPasteText("");
+      toast({ title: "Voice profile updated" });
+    } catch (err) {
+      toast({
+        title: "Couldn't build voice profile",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSaveVoiceText = async () => {
+    await updateProfileText(voiceText.trim());
+    setEditingVoice(false);
+    toast({ title: "Voice profile saved" });
   };
 
   return (
@@ -156,6 +194,124 @@ export default function AccountPage() {
             ) : null}
             {metricsSaved ? "Saved" : "Save"}
           </Button>
+        </div>
+      </div>
+
+      {/* Caption voice */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Sparkle className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold">Caption Voice</h2>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Learn your caption style from your Instagram history so generated captions sound like you.
+        </p>
+
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          {voiceProfile?.text ? (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">
+                  Learned from {voiceProfile.sampleCount} caption
+                  {voiceProfile.sampleCount === 1 ? "" : "s"}
+                  {voiceUpdatedAt ? ` · ${new Date(voiceUpdatedAt).toLocaleDateString()}` : ""}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs shrink-0"
+                  onClick={() => handleBuildVoice()}
+                  disabled={isBuilding}
+                >
+                  {isBuilding ? (
+                    <CircleNotch className="h-3.5 w-3.5 animate-spin mr-1" />
+                  ) : (
+                    <ArrowClockwise className="h-3.5 w-3.5 mr-1" />
+                  )}
+                  Rebuild
+                </Button>
+              </div>
+
+              {editingVoice ? (
+                <div className="space-y-2">
+                  <textarea
+                    className="text-xs w-full bg-transparent border rounded px-2 py-1.5 outline-none resize-none leading-relaxed"
+                    rows={10}
+                    value={voiceText}
+                    onChange={(e) => setVoiceText(e.target.value)}
+                  />
+                  <div className="flex justify-end gap-1.5">
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditingVoice(false)}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" className="h-7 text-xs" onClick={handleSaveVoiceText} disabled={isUpdatingText}>
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs whitespace-pre-line leading-relaxed text-muted-foreground max-h-48 overflow-y-auto">
+                    {voiceProfile.text}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => { setVoiceText(voiceProfile.text); setEditingVoice(true); }}
+                  >
+                    <PencilSimple className="h-3.5 w-3.5 mr-1" /> Edit
+                  </Button>
+                </>
+              )}
+            </>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">No voice profile yet.</p>
+              <Button size="sm" className="w-full" onClick={() => handleBuildVoice()} disabled={isBuilding}>
+                {isBuilding ? (
+                  <CircleNotch className="h-3.5 w-3.5 animate-spin mr-1" />
+                ) : (
+                  <Sparkle className="h-3.5 w-3.5 mr-1" />
+                )}
+                Build from Instagram
+              </Button>
+            </div>
+          )}
+
+          {/* Paste fallback */}
+          <div className="pt-2 border-t">
+            <button
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setPasteOpen((o) => !o)}
+            >
+              Or paste captions manually
+            </button>
+            {pasteOpen && (
+              <div className="space-y-2 mt-2">
+                <textarea
+                  className="text-xs w-full bg-transparent border rounded px-2 py-1.5 outline-none resize-none"
+                  rows={6}
+                  value={pasteText}
+                  onChange={(e) => setPasteText(e.target.value)}
+                  placeholder="Paste a handful of your captions, separated by a blank line between each…"
+                />
+                <Button
+                  size="sm"
+                  className="w-full"
+                  disabled={isBuilding || !pasteText.trim()}
+                  onClick={() =>
+                    handleBuildVoice(
+                      pasteText.split(/\n{2,}/).map((s) => s.trim()).filter(Boolean)
+                    )
+                  }
+                >
+                  {isBuilding ? <CircleNotch className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                  Build from pasted captions
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
