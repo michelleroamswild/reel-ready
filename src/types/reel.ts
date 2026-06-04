@@ -25,6 +25,7 @@ export interface ReelTemplate {
 export interface SavedCaption {
   text: string;
   hashtags: string[];
+  selected?: boolean;
 }
 
 export interface Reel {

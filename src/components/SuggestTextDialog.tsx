@@ -45,6 +45,10 @@ interface Props {
   filename: string;
   onSaveAsPhrase: (text: string, tags: string[]) => void;
   onCreateReel?: (text: string) => void;
+  // When provided, shows a "Use this text" action that writes the picked
+  // suggestion straight onto the current reel segment (reel-builder flow).
+  onUseText?: (text: string) => void;
+  useTextLabel?: string;
 }
 
 export function SuggestTextDialog({
@@ -54,6 +58,8 @@ export function SuggestTextDialog({
   filename,
   onSaveAsPhrase,
   onCreateReel,
+  onUseText,
+  useTextLabel = "Use this text",
 }: Props) {
   const [step, setStep] = useState<Step>("configure");
   const [length, setLength] = useState("short");
@@ -275,20 +281,22 @@ export function SuggestTextDialog({
                             <Copy className="h-3.5 w-3.5" />
                           )}
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => handleSave(s, i)}
-                          disabled={savedIndices.has(i)}
-                          title="Save as phrase"
-                        >
-                          {savedIndices.has(i) ? (
-                            <Check className="h-3.5 w-3.5 text-green-500" />
-                          ) : (
-                            <Plus className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
+                        {!onUseText && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => handleSave(s, i)}
+                            disabled={savedIndices.has(i)}
+                            title="Save as phrase"
+                          >
+                            {savedIndices.has(i) ? (
+                              <Check className="h-3.5 w-3.5 text-green-500" />
+                            ) : (
+                              <Plus className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        )}
                         {onCreateReel && (
                           <Button
                             variant="ghost"
@@ -313,6 +321,15 @@ export function SuggestTextDialog({
                     <p className="text-sm whitespace-pre-line">
                       {s.text.replace(/\\n/g, "\n")}
                     </p>
+                    {onUseText && (
+                      <Button
+                        size="sm"
+                        className="w-full h-8 bg-brand text-brand-ink hover:bg-brand/90 font-semibold"
+                        onClick={() => onUseText(s.text.replace(/\\n/g, "\n"))}
+                      >
+                        <Check className="h-3.5 w-3.5 mr-1" /> {useTextLabel}
+                      </Button>
+                    )}
                   </div>
                 ))}
 

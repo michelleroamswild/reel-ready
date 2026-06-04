@@ -201,7 +201,7 @@ export function useReels() {
       endSeconds,
     }: {
       title: string;
-      text: string;
+      text?: string;
       videoId: string;
       startSeconds: number;
       endSeconds: number;
@@ -229,7 +229,7 @@ export function useReels() {
         .insert({
           reel_id: reelId,
           video_id: videoId,
-          section_text: text,
+          section_text: text ?? "",
           section_index: 0,
           start_seconds: startSeconds,
           end_seconds: endSeconds,

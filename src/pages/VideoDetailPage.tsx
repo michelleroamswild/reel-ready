@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
+import { resolveColorHex } from "@/lib/colorName";
 import { useVideos } from "@/hooks/use-videos";
 import { usePhrases } from "@/hooks/use-phrases";
 import { useReels } from "@/hooks/use-reels";
@@ -39,6 +40,7 @@ export default function VideoDetailPage() {
   const [showDelete, setShowDelete] = useState(false);
   const [showSuggestText, setShowSuggestText] = useState(false);
   const [showTrialConfirm, setShowTrialConfirm] = useState(false);
+  const [creatingReel, setCreatingReel] = useState(false);
   const [editingFilename, setEditingFilename] = useState(false);
   const [filenameDraft, setFilenameDraft] = useState("");
 
@@ -100,6 +102,28 @@ export default function VideoDetailPage() {
           {a && (
             <>
               <Button
+                size="sm"
+                disabled={creatingReel}
+                onClick={async () => {
+                  setCreatingReel(true);
+                  try {
+                    const reelId = await createQuickReel({
+                      title: video.filename.replace(/\.[^.]+$/, "").slice(0, 40) || "New reel",
+                      videoId: video.id,
+                      startSeconds: 0,
+                      endSeconds: video.duration_seconds ?? 5,
+                    });
+                    navigate(`/reels/${reelId}`);
+                  } catch {
+                    setCreatingReel(false);
+                  }
+                }}
+                className="h-8 rounded-full bg-brand text-brand-ink hover:bg-brand/90 font-semibold"
+              >
+                <FilmStrip className="h-4 w-4 mr-1" weight="fill" />
+                {creatingReel ? "Creating…" : "Create reel"}
+              </Button>
+              <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setShowSuggestText(true)}
@@ -129,10 +153,11 @@ export default function VideoDetailPage() {
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-6">
-        {/* Left: video + meta */}
-        <div className="md:w-[42%] lg:w-[38%] space-y-4 shrink-0">
-          <div className="relative rounded-xl overflow-hidden border border-hairline bg-black aspect-[9/16]">
+      {/* Two-column body — video pinned on the LEFT, content scrolls on the RIGHT */}
+      <div className="flex flex-col md:flex-row md:items-start md:gap-8">
+        {/* LEFT (desktop) / TOP (mobile): Video — fixed in place */}
+        <div className="md:sticky md:top-10 md:self-start shrink-0 flex justify-center">
+          <div className="relative rounded-xl border border-hairline bg-black overflow-hidden aspect-[9/16] w-full md:w-auto md:h-[calc(100vh-5rem)] mx-auto">
             <video
               src={video.url}
               controls
@@ -142,7 +167,10 @@ export default function VideoDetailPage() {
               className="w-full h-full object-contain"
             />
           </div>
+        </div>
 
+        {/* RIGHT (desktop) / BELOW (mobile): Scrollable content */}
+        <div className="flex-1 min-w-0 space-y-4 mt-6 md:mt-0">
           {/* Filename */}
           {editingFilename ? (
             <input
@@ -198,10 +226,8 @@ export default function VideoDetailPage() {
               <span className="chip chip-outline !text-[11px]">{video.duration_seconds.toFixed(1)}s</span>
             )}
           </div>
-        </div>
 
-        {/* Right: AI analysis */}
-        <div className="flex-1 min-w-0">
+          {/* AI analysis */}
           {!a ? (
             <div className="rounded-2xl border border-dashed border-hairline-strong bg-surface px-6 py-16 flex flex-col items-center justify-center text-center space-y-3">
               <Sparkle className="h-8 w-8 text-brand" weight="fill" />
@@ -254,7 +280,7 @@ export default function VideoDetailPage() {
                       >
                         <span
                           className="h-5 w-5 rounded-full border border-black/10"
-                          style={{ background: color }}
+                          style={{ background: resolveColorHex(color) }}
                         />
                         <span className="font-mono text-[11px] uppercase text-ink-2 tracking-tight">{color}</span>
                       </div>
