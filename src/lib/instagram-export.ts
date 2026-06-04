@@ -22,19 +22,28 @@ function fixMojibake(s: string): string {
   }
 }
 
-// Recursively collect every "title" string value (the caption field).
-function collectTitles(node: unknown, out: string[]): void {
+// Recursively collect caption strings. Instagram's export stores the caption in
+// two places depending on the file/version:
+//   1. label_values entries shaped { "label": "Caption", "value": "..." }  (canonical)
+//   2. media items shaped { "uri": ..., "title": "..." }                   (older/reels)
+// We collect both; de-duping later removes the overlap. We deliberately ignore
+// the section-header `title`s ("Media", "Hashtags", "Reel metadata", …).
+function collectCaptions(node: unknown, out: string[]): void {
   if (node == null) return;
   if (Array.isArray(node)) {
-    for (const item of node) collectTitles(item, out);
+    for (const item of node) collectCaptions(item, out);
     return;
   }
   if (typeof node === "object") {
-    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    const obj = node as Record<string, unknown>;
+    if (obj.label === "Caption" && typeof obj.value === "string" && obj.value.trim()) {
+      out.push(obj.value);
+    }
+    for (const [key, value] of Object.entries(obj)) {
       if (key === "title" && typeof value === "string" && value.trim()) {
         out.push(value);
       } else {
-        collectTitles(value, out);
+        collectCaptions(value, out);
       }
     }
   }
@@ -48,7 +57,7 @@ export function extractCaptionsFromExport(jsonText: string): string[] {
     return [];
   }
   const raw: string[] = [];
-  collectTitles(data, raw);
+  collectCaptions(data, raw);
   return raw;
 }
 
@@ -58,11 +67,15 @@ export function captionsFromExportFiles(fileTexts: string[]): string[] {
   const all: string[] = [];
   for (const text of fileTexts) all.push(...extractCaptionsFromExport(text));
 
+  // Structural labels Instagram uses as "title" that aren't real captions.
+  const NOISE = /^(reel|post|story|stories|media|profile|posts?) metadata$/i;
+
   const seen = new Set<string>();
   const out: string[] = [];
   for (const rawCaption of all) {
     const cleaned = fixMojibake(rawCaption).trim();
     if (cleaned.length < 10) continue;
+    if (NOISE.test(cleaned)) continue;
     const key = cleaned.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);

@@ -58,7 +58,27 @@ interface CaptionRow {
 }
 
 const MAX_PAGES = 12; // up to ~600 posts
-const MAX_SAMPLE = 120; // captions fed to the distiller
+const MAX_SAMPLE = 500; // captions fed to the distiller (covers most full histories)
+
+// The user's own most-used hashtags are the best signal for what to recommend —
+// rank by real frequency across their whole caption history.
+function topHashtags(texts: string[], n: number): string[] {
+  const counts = new Map<string, { tag: string; count: number }>();
+  for (const t of texts) {
+    const matches = t.match(/#[\p{L}\p{N}_]+/gu) ?? [];
+    for (const m of matches) {
+      const tag = m.slice(1);
+      const key = tag.toLowerCase();
+      const existing = counts.get(key);
+      if (existing) existing.count++;
+      else counts.set(key, { tag, count: 1 });
+    }
+  }
+  return [...counts.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, n)
+    .map((e) => e.tag);
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -143,15 +163,16 @@ Deno.serve(async (req) => {
 CAPTIONS (${sample.length} real samples${source === "instagram" ? ", higher-engagement posts listed first" : ""}):
 ${captionList}
 
-Write a detailed, specific guide describing how THIS person writes captions. Reference the actual patterns you observe (don't be generic). Cover:
-- Overall voice & personality in 1-2 sentences
-- Sentence length & rhythm; capitalization (do they write lowercase?); punctuation habits
-- Emoji usage: how many, which ones, where they go (or none)
-- Hashtag style: typical number per post, niche vs broad, and any branded/recurring hashtags they reuse — list the actual recurring ones you see
-- Signature words, phrases, openers, closers, and calls-to-action they favor
-- Their tone range and anything they clearly avoid
+Write a THOROUGH, detailed guide (several full paragraphs, ~250-450 words) describing how THIS person writes captions. Be specific and reference the actual patterns and example phrases you observe — never generic. Cover all of:
+- Overall voice & personality: a rich 3-5 sentence portrait of who they sound like, their humor, attitude, and what makes their writing recognizably theirs
+- CAPITALIZATION & CASING (important — be exact): Do they write in normal sentence case, all-lowercase, Title Case, or use ALL CAPS for emphasis? State it plainly and unambiguously, e.g. "Writes in normal sentence case, capitalizing the first letter of each sentence."
+- Sentence length & rhythm; punctuation habits (em dashes, ellipses, line breaks, exclamation points?)
+- Emoji usage: how many, which specific ones, where they place them (or none)
+- Hashtag style: typical number per post, niche vs broad, placement, and recurring/branded tags
+- Signature words, phrases, openers, closers, and calls-to-action they favor — quote real examples
+- Tone range and anything they clearly avoid
 
-Write the guide as direct, usable instructions ("Write in lowercase.", "Open with...", "Avoid..."). Be concrete.
+Write the guide as direct, usable instructions ("Write in normal sentence case.", "Open with a vivid scene...", "Avoid..."). Be concrete and generous with detail — this profile is the sole reference another writer will use to imitate this voice.
 
 Return ONLY valid JSON in this exact shape:
 {
@@ -166,19 +187,50 @@ Return ONLY valid JSON in this exact shape:
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.4,
-          maxOutputTokens: 2000,
+          maxOutputTokens: 8192,
           responseMimeType: "application/json",
+          // Disable "thinking" so the whole token budget goes to the JSON output
+          // (otherwise the profile JSON can get truncated and fail to parse).
+          thinkingConfig: { thinkingBudget: 0 },
         },
       }),
     });
     const gdata = await geminiRes.json();
-    const text = gdata?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) return json({ error: "Voice analysis returned no result." }, 500);
+    if (!geminiRes.ok || gdata?.error) {
+      return json(
+        { error: `Gemini API error (${geminiRes.status}): ${gdata?.error?.message ?? "unknown"}` },
+        500
+      );
+    }
+    const cand = gdata?.candidates?.[0];
+    // Gemini splits longer outputs across multiple parts — concatenate them all,
+    // otherwise the JSON gets truncated mid-string.
+    const parts = (cand?.content?.parts ?? []) as Array<{ text?: string }>;
+    const text = parts.map((p) => p.text ?? "").join("");
+    if (!text) {
+      const reason = cand?.finishReason ?? gdata?.promptFeedback?.blockReason ?? "no candidates";
+      return json({ error: `Voice analysis returned no text (reason: ${reason})` }, 500);
+    }
 
-    const parsed = JSON.parse(text) as { profile?: string; signatureHashtags?: string[] };
+    let parsed: { profile?: string; signatureHashtags?: string[] };
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return json(
+        { error: `Voice analysis JSON parse failed (finishReason: ${cand?.finishReason ?? "?"}, ${text.length} chars)` },
+        500
+      );
+    }
+    // Prefer the user's actual most-used hashtags (data-driven); fall back to
+    // the model's guess only if they wrote none.
+    const realTags = topHashtags(captions.map((c) => c.text), 20);
+    const signatureHashtags = realTags.length
+      ? realTags
+      : (parsed.signatureHashtags ?? []).map((h) => h.replace(/^#/, ""));
+
     const voiceProfile = {
       text: parsed.profile ?? "",
-      signatureHashtags: (parsed.signatureHashtags ?? []).map((h) => h.replace(/^#/, "")),
+      signatureHashtags,
       sampleCount: sample.length,
       totalCaptions: captions.length,
       source,

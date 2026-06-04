@@ -30,16 +30,16 @@ Deno.serve(async (req) => {
     const { userId } = await getAuthUser(req);
     const { mood, tone, tense, iterateOn, segments, matchVoice } = (await req.json()) as {
       mood: string;
-      tone: string;
+      tone?: string;
       tense?: string;
       iterateOn?: string;
       segments: SegmentInput[];
       matchVoice?: boolean;
     };
 
-    if (!mood || !tone || !segments?.length) {
+    if (!mood || !segments?.length) {
       return new Response(
-        JSON.stringify({ error: "mood, tone, and segments are required" }),
+        JSON.stringify({ error: "mood and segments are required" }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
           | { text?: string; signatureHashtags?: string[] }
           | null;
         if (vp?.text) {
-          voiceBlock = `\n\nVOICE PROFILE — This is how THIS creator writes their captions. Match this voice exactly; it overrides the generic tone guidelines below where they conflict:\n${vp.text}`;
+          voiceBlock = `\n\nVOICE PROFILE — This is how THIS creator actually writes their captions. Match this voice exactly; it OVERRIDES every generic guideline below where they conflict, including capitalization, punctuation, emoji, and hashtag style. Follow the capitalization/casing described here precisely — do not impose all-lowercase or any casing the profile doesn't describe.\n${vp.text}`;
           if (vp.signatureHashtags?.length) {
             voiceBlock += `\nWhen relevant, reuse the hashtags this creator commonly uses: ${vp.signatureHashtags
               .map((h) => `#${h}`)
@@ -98,24 +98,25 @@ Deno.serve(async (req) => {
 REEL CONTENT:
 ${segmentContext}${voiceBlock}
 
-MOOD: ${mood}
-TONE: ${tone}${tense && tense !== "any" ? `\nTENSE: ${tense}. ${tense === "past" ? 'Write in past tense — the content already happened. For example prefer "loved every second of this" over "loving every second of this".' : tense === "reflective" ? 'Write in a reflective, looking-back tone — reminiscing or appreciating something that happened. For example "still thinking about this" or "one of those moments you never forget".' : 'Write in a timeless, tense-neutral way — no specific time reference. Avoid present progressive ("loving this") and explicit past tense. For example "nothing beats this" or "the kind of moment you hold onto".'}` : ""}
+MOOD: ${mood}${tone ? `\nTONE: ${tone}` : ""}${tense && tense !== "any" ? `\nTENSE: ${tense}. ${tense === "past" ? 'Write in past tense — the content already happened. For example prefer "loved every second of this" over "loving every second of this".' : tense === "reflective" ? 'Write in a reflective, looking-back tone — reminiscing or appreciating something that happened. For example "still thinking about this" or "one of those moments you never forget".' : 'Write in a timeless, tense-neutral way — no specific time reference. Avoid present progressive ("loving this") and explicit past tense. For example "nothing beats this" or "the kind of moment you hold onto".'}` : ""}
 
-${iterateOn ? `The user liked this caption and wants 3 variations of it:\n"${iterateOn}"\n\nWrite 3 new captions that are similar in style, structure, and vibe but not identical. Rephrase, remix, or riff on the original.` : "Write 3 captions for this reel."} Each caption should:
-- Match the "${mood}" mood and "${tone}" tone
+${iterateOn ? `The user liked this caption and wants 3 variations of it:\n"${iterateOn}"\n\nWrite 3 new captions that are similar in style, structure, and vibe but not identical. Rephrase, remix, or riff on the original.` : "Write 3 captions for this reel. Make the three DISTINCTLY DIFFERENT from one another — vary the length, structure, and angle (e.g. one short and punchy, one with a personal or story beat, one that opens with a question or a bold hook). They must NOT read like three rewrites of the same sentence."} Each caption should:
+- Match the "${mood}" mood${tone ? ` and "${tone}" tone` : ""}
 - Be informed by the video content and text overlays described above
 - Be 1-3 sentences, concise and engaging
 - Include 4-5 relevant hashtags that would perform well on Instagram/TikTok
 - Feel natural and authentic to how real creators write captions
 
-Guidelines by tone:
-- casual: lowercase, conversational, might use "lol" or "tbh"
+Capitalization: write in normal sentence case by default (capitalize the first letter of sentences and proper nouns). Do NOT make captions all-lowercase unless the voice profile explicitly says this creator writes in lowercase.
+
+${tone ? `Guidelines by tone:
+- casual: conversational and relaxed, like talking to a friend
 - witty: clever wordplay, unexpected twist, slightly humorous
 - inspirational: uplifting but not generic, grounded in the specific content
 - storytelling: brief narrative arc, draws the viewer in, personal
 - minimal: very short (1 sentence max), lets the video speak
 
-Guidelines by mood:
+` : ""}Guidelines by mood:
 - confident: assertive, self-assured, bold statements
 - chill: relaxed, easygoing, no pressure
 - emotional: heartfelt, vulnerable, genuine feeling
@@ -140,14 +141,17 @@ Do NOT include # symbols in the hashtag strings — just the words (e.g. "sunset
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.8,
-          maxOutputTokens: 2000,
+          maxOutputTokens: 4096,
           responseMimeType: "application/json",
         },
       }),
     });
 
     const data = await geminiResponse.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    // Gemini may split output across multiple parts — join them so the JSON
+    // isn't truncated mid-string.
+    const parts = (data?.candidates?.[0]?.content?.parts ?? []) as Array<{ text?: string }>;
+    const text = parts.map((p) => p.text ?? "").join("");
 
     if (!text) {
       return new Response(

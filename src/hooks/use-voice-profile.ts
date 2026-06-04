@@ -42,7 +42,22 @@ export function useVoiceProfile() {
       const { data, error } = await supabase.functions.invoke("build-voice-profile", {
         body: { captions: vars?.captions },
       });
-      if (error) throw error;
+      if (error) {
+        // supabase-js wraps non-2xx in a generic FunctionsHttpError; dig out the
+        // real { error } message the function returned in its response body.
+        let detail = error.message;
+        const ctx = (error as { context?: Response }).context;
+        if (ctx && typeof ctx.json === "function") {
+          try {
+            const body = await ctx.json();
+            if (body?.error) detail = body.error;
+          } catch {
+            /* response wasn't json */
+          }
+        }
+        console.error("[build-voice-profile] failed:", detail);
+        throw new Error(detail);
+      }
       if (data?.error) throw new Error(data.error);
       return data.voiceProfile as VoiceProfile;
     },
