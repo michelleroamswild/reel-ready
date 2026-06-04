@@ -17,14 +17,34 @@ import {
   CheckCircle,
   User,
   ChartBar,
+  Sparkle,
+  PencilSimple,
+  UploadSimple,
 } from "@phosphor-icons/react";
 import { useToast } from "@/hooks/use-toast";
+import { useVoiceProfile } from "@/hooks/use-voice-profile";
+import { captionsFromExportFiles } from "@/lib/instagram-export";
 import type { Platform, PerformanceTrend } from "@/types/posting-strategy";
 
 export default function AccountPage() {
   const { user, signOut } = useAuth();
   const { profile, upsertProfile, isUpserting } = useAccountProfile();
+  const {
+    profile: voiceProfile,
+    updatedAt: voiceUpdatedAt,
+    buildProfile,
+    isBuilding,
+    updateProfileText,
+    isUpdatingText,
+  } = useVoiceProfile();
   const { toast } = useToast();
+
+  const [editingVoice, setEditingVoice] = useState(false);
+  const [voiceText, setVoiceText] = useState("");
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [importCaptions, setImportCaptions] = useState<string[]>([]);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
 
   const [platform, setPlatform] = useState<Platform>("instagram");
   const [postsPerWeek, setPostsPerWeek] = useState("");
@@ -57,6 +77,46 @@ export default function AccountPage() {
     setMetricsSaved(true);
     toast({ title: "Account metrics saved" });
     setTimeout(() => setMetricsSaved(false), 2000);
+  };
+
+  const handleBuildVoice = async (captions?: string[]) => {
+    try {
+      await buildProfile(captions ? { captions } : undefined);
+      setPasteOpen(false);
+      setPasteText("");
+      toast({ title: "Voice profile updated" });
+    } catch (err) {
+      toast({
+        title: "Couldn't build voice profile",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSaveVoiceText = async () => {
+    await updateProfileText(voiceText.trim());
+    setEditingVoice(false);
+    toast({ title: "Voice profile saved" });
+  };
+
+  const handleExportFiles = async (files: FileList | null) => {
+    if (!files || !files.length) return;
+    setImportStatus("Reading files…");
+    setImportCaptions([]);
+    try {
+      const texts = await Promise.all(Array.from(files).map((f) => f.text()));
+      const caps = captionsFromExportFiles(texts);
+      setImportCaptions(caps);
+      setImportStatus(
+        caps.length
+          ? `Found ${caps.length} caption${caps.length === 1 ? "" : "s"}`
+          : "No captions found. Make sure you selected the posts_*.json / reels.json files from your export."
+      );
+    } catch {
+      setImportCaptions([]);
+      setImportStatus("Couldn't read those files.");
+    }
   };
 
   return (
@@ -156,6 +216,138 @@ export default function AccountPage() {
             ) : null}
             {metricsSaved ? "Saved" : "Save"}
           </Button>
+        </div>
+      </div>
+
+      {/* Caption voice */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Sparkle className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold">Caption Voice</h2>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Learn your caption style from your Instagram history so generated captions sound like you.
+        </p>
+
+        <div className="rounded-lg border bg-card p-4 space-y-4">
+          {/* Existing profile */}
+          {voiceProfile?.text && (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Learned from {voiceProfile.sampleCount} caption
+                {voiceProfile.sampleCount === 1 ? "" : "s"}
+                {voiceUpdatedAt ? ` · ${new Date(voiceUpdatedAt).toLocaleDateString()}` : ""}
+              </p>
+              {editingVoice ? (
+                <div className="space-y-2">
+                  <textarea
+                    className="text-xs w-full bg-transparent border rounded px-2 py-1.5 outline-none resize-none leading-relaxed"
+                    rows={10}
+                    value={voiceText}
+                    onChange={(e) => setVoiceText(e.target.value)}
+                  />
+                  <div className="flex justify-end gap-1.5">
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditingVoice(false)}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" className="h-7 text-xs" onClick={handleSaveVoiceText} disabled={isUpdatingText}>
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs whitespace-pre-line leading-relaxed text-muted-foreground max-h-48 overflow-y-auto">
+                    {voiceProfile.text}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => { setVoiceText(voiceProfile.text); setEditingVoice(true); }}
+                  >
+                    <PencilSimple className="h-3.5 w-3.5 mr-1" /> Edit
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Build / update from captions */}
+          <div className={`space-y-3 ${voiceProfile?.text ? "pt-3 border-t" : ""}`}>
+            {!voiceProfile?.text && (
+              <p className="text-xs text-muted-foreground">
+                No voice profile yet — build one from your captions:
+              </p>
+            )}
+
+            {/* Method 1: Instagram data export */}
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium flex items-center gap-1.5">
+                <UploadSimple className="h-3.5 w-3.5" /> Import from Instagram data export
+              </p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                In Instagram: <span className="text-foreground">Settings → Accounts Center → Your information and permissions → Download your information</span>, request a <span className="text-foreground">JSON</span> export, unzip it, then select the <span className="text-foreground">posts</span> / <span className="text-foreground">reels</span> <code>.json</code> files.
+              </p>
+              <input
+                type="file"
+                multiple
+                accept=".json,application/json"
+                onChange={(e) => handleExportFiles(e.target.files)}
+                className="block w-full text-[11px] text-muted-foreground file:mr-2 file:rounded file:border file:border-input file:bg-transparent file:px-2 file:py-1 file:text-xs file:cursor-pointer"
+              />
+              {importStatus && <p className="text-[11px] text-muted-foreground">{importStatus}</p>}
+              {importCaptions.length > 0 && (
+                <Button
+                  size="sm"
+                  className="w-full"
+                  disabled={isBuilding}
+                  onClick={() => handleBuildVoice(importCaptions)}
+                >
+                  {isBuilding ? (
+                    <CircleNotch className="h-3.5 w-3.5 animate-spin mr-1" />
+                  ) : (
+                    <Sparkle className="h-3.5 w-3.5 mr-1" />
+                  )}
+                  Build from {importCaptions.length} caption{importCaptions.length === 1 ? "" : "s"}
+                </Button>
+              )}
+            </div>
+
+            {/* Method 2: paste */}
+            <div className="pt-1">
+              <button
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setPasteOpen((o) => !o)}
+              >
+                Or paste captions manually
+              </button>
+              {pasteOpen && (
+                <div className="space-y-2 mt-2">
+                  <textarea
+                    className="text-xs w-full bg-transparent border rounded px-2 py-1.5 outline-none resize-none"
+                    rows={6}
+                    value={pasteText}
+                    onChange={(e) => setPasteText(e.target.value)}
+                    placeholder="Paste a handful of your captions, separated by a blank line between each…"
+                  />
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    disabled={isBuilding || !pasteText.trim()}
+                    onClick={() =>
+                      handleBuildVoice(
+                        pasteText.split(/\n{2,}/).map((s) => s.trim()).filter(Boolean)
+                      )
+                    }
+                  >
+                    {isBuilding ? <CircleNotch className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                    Build from pasted captions
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

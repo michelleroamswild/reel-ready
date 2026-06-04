@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useReel } from "@/hooks/use-reels";
 import { useVideos } from "@/hooks/use-videos";
+import { useVoiceProfile } from "@/hooks/use-voice-profile";
 import { supabase } from "@/lib/supabase";
 import { ArrowsClockwise } from "@phosphor-icons/react";
 import { useGenerateTrialReels, useTrialBatchesForReel, useTrialBatch, useDeleteTrialBatch, useRegenerateVariant } from "@/hooks/use-trial-reels";
@@ -33,7 +34,7 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VideoThumbnail } from "@/components/VideoThumbnail";
-import { ArrowLeft, Play, Export, PencilSimple, Trash, Sparkle, Flask, MusicNote, CaretLeft, CaretRight, CircleNotch, Plus } from "@phosphor-icons/react";
+import { ArrowLeft, Play, Export, PencilSimple, Trash, Sparkle, Copy, Check, X, Flask, MusicNote, CaretLeft, CaretRight, CircleNotch, Plus } from "@phosphor-icons/react";
 import type { TrialVariantType } from "@/types/trial";
 import type { ReelSegmentWithVideo } from "@/types/reel";
 import type { Video } from "@/types/video";
@@ -84,12 +85,53 @@ function parseTextShadowIntensity(value: string | number | undefined): number {
   return Math.min(10, Math.max(1, num));
 }
 
+/** Derive a caption mood + tense from the clips' AI analysis ("video vibes"). */
+function deriveVibe(
+  analyses: Array<Record<string, unknown> | null | undefined>
+): { mood: string; tense: string } {
+  const present = analyses.filter(Boolean) as Array<Record<string, unknown>>;
+  if (!present.length) return { mood: "playful", tense: "timeless" };
+
+  const avg = (key: string): number | null => {
+    const nums = present.map((a) => a[key]).filter((v): v is number => typeof v === "number");
+    return nums.length ? nums.reduce((s, n) => s + n, 0) / nums.length : null;
+  };
+  const energy = avg("energyScore"); // 1-10
+  const moodScore = avg("moodScore"); // -5..5
+  const text = present
+    .map((a) => `${a.mood ?? ""} ${a.structure ?? ""} ${a.summary ?? ""}`)
+    .join(" ")
+    .toLowerCase();
+
+  let mood: string;
+  if (/nostalg|emotional|tender|melanchol|wistful|sentimental|moody|somber|intimate/.test(text)) {
+    mood = "emotional";
+  } else if (energy != null && energy >= 7 && (moodScore ?? 0) >= 1) {
+    mood = "playful";
+  } else if (energy != null && energy >= 7) {
+    mood = "edgy";
+  } else if (energy != null && energy <= 4) {
+    mood = "chill";
+  } else if ((moodScore ?? 0) >= 2) {
+    mood = "confident";
+  } else {
+    mood = "chill";
+  }
+
+  const tense = /nostalg|memory|throwback|reminis|reflect|looking back|years ago|used to|last (year|summer|time)/.test(text)
+    ? "reflective"
+    : "timeless";
+
+  return { mood, tense };
+}
+
 export default function ReelBuilderPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { reel, isLoading, updateSegment, isUpdating, updateSegmentText, deleteSegment, updateTitle, updateTextSettings, addSegment, isAdding, reorderSegments } = useReel(id);
+  const { reel, isLoading, updateSegment, isUpdating, updateSegmentText, deleteSegment, updateTitle, updateTextSettings, updateSavedCaptions, addSegment, isAdding, reorderSegments } = useReel(id);
   const { videos } = useVideos();
+  const { profile: voiceProfile } = useVoiceProfile();
   const generateTrialReels = useGenerateTrialReels();
   const { data: trialBatches } = useTrialBatchesForReel(id);
   const { data: parentBatch } = useTrialBatch(reel?.trial_batch_id ?? undefined);
@@ -121,9 +163,24 @@ export default function ReelBuilderPage() {
   const [textShadowIntensity, setTextShadowIntensity] = useState<number>(5);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
-  // Caption generation state (single inline AI draft, no modal)
-  const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
+  // Text-overlay generation (short on-screen words burned onto the clip)
+  const [generatingOverlay, setGeneratingOverlay] = useState(false);
+  const [overlayError, setOverlayError] = useState<string | null>(null);
+
+  // Caption generation (Instagram post caption + hashtags)
+  const CAPTION_MOODS = ["confident", "chill", "emotional", "playful", "edgy"] as const;
+  const CAPTION_TENSES = ["timeless", "past", "reflective", "any"] as const;
+  const [captionMood, setCaptionMood] = useState<string>("playful");
+  const [captionTense, setCaptionTense] = useState<string>("timeless");
+  const [vibeOverridden, setVibeOverridden] = useState(false); // user manually changed mood/tense
+  const [vibeOpen, setVibeOpen] = useState(false); // expand the adjust controls
+  const [generatingCaption, setGeneratingCaption] = useState(false);
   const [captionError, setCaptionError] = useState<string | null>(null);
+  const [matchVoice, setMatchVoice] = useState(true);
+  const [editingCaption, setEditingCaption] = useState(false);
+  const [capTextDraft, setCapTextDraft] = useState("");
+  const [capTagsDraft, setCapTagsDraft] = useState("");
+  const [copiedCap, setCopiedCap] = useState<number | null>(null);
 
   // Add clip state
   const [showAddClip, setShowAddClip] = useState(false);
@@ -191,12 +248,29 @@ export default function ReelBuilderPage() {
   const currentVideo = current ? videos.find((v) => v.id === current.video_id) : undefined;
   const segmentIds = useMemo(() => segments.map((s) => s.id), [segments]);
 
-  // Generate the single best caption from the current clip's AI analysis (no modal),
-  // write it onto the clip, and drop straight into edit mode so the user can refine it.
-  const generateCaption = async () => {
+  // Derive the caption vibe (mood + tense) from the clips' analysis; keep it in
+  // sync until the user manually overrides it.
+  const derivedVibe = useMemo(
+    () =>
+      deriveVibe(
+        segments.map((s) => videos.find((v) => v.id === s.video_id)?.analysis as Record<string, unknown> | null)
+      ),
+    [segments, videos]
+  );
+  useEffect(() => {
+    if (!vibeOverridden) {
+      setCaptionMood(derivedVibe.mood);
+      setCaptionTense(derivedVibe.tense);
+    }
+  }, [derivedVibe, vibeOverridden]);
+
+  // --- Text overlay (short on-screen words) ---
+  // Draft the best short overlay text from the clip's analysis, write it onto the
+  // clip, and open the inline editor so the user can refine it.
+  const generateOverlayText = async () => {
     if (!current || !currentVideo?.analysis) return;
-    setIsGeneratingCaption(true);
-    setCaptionError(null);
+    setGeneratingOverlay(true);
+    setOverlayError(null);
     try {
       const { data, error } = await supabase.functions.invoke("suggest-text", {
         body: { analysis: currentVideo.analysis, filename: currentVideo.filename, length: "short", style: "auto" },
@@ -204,19 +278,92 @@ export default function ReelBuilderPage() {
       if (error) throw error;
       if (data.error) throw new Error(data.error);
       const suggestions = (data.suggestions ?? []) as { text: string; confidence?: number }[];
-      const best = suggestions
-        .slice()
-        .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))[0];
-      if (!best) throw new Error("No caption returned");
+      const best = suggestions.slice().sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))[0];
+      if (!best) throw new Error("No text returned");
       const text = best.text.replace(/\\n/g, "\n");
       updateSegmentText({ segmentId: current.id, text });
       setPhraseDraft(text);
       setEditingPhrase(true);
     } catch (err) {
-      setCaptionError(err instanceof Error ? err.message : "Failed to generate caption");
+      setOverlayError(err instanceof Error ? err.message : "Failed to generate text");
     } finally {
-      setIsGeneratingCaption(false);
+      setGeneratingOverlay(false);
     }
+  };
+
+  // --- Caption (IG post caption + hashtags), persisted on reel.saved_captions ---
+  const savedCaptions = reel?.saved_captions ?? [];
+  const primaryCaptionIdx = (() => {
+    const i = savedCaptions.findIndex((c) => c.selected);
+    return i >= 0 ? i : savedCaptions.length ? 0 : -1;
+  })();
+  const altCaptions = savedCaptions
+    .map((c, i) => ({ c, i }))
+    .filter(({ i }) => i !== primaryCaptionIdx)
+    .slice(0, 3);
+
+  const generateCaptions = async () => {
+    setGeneratingCaption(true);
+    setCaptionError(null);
+    try {
+      const segmentData = segments.map((seg) => {
+        const fv = videos.find((v) => v.id === seg.video_id);
+        return { section_text: seg.section_text, analysis: fv?.analysis ?? null };
+      });
+      const { data, error } = await supabase.functions.invoke("generate-caption", {
+        body: {
+          mood: captionMood,
+          tense: captionTense,
+          segments: segmentData,
+          matchVoice: matchVoice && !!voiceProfile?.text,
+        },
+      });
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+      const incoming = (data.captions ?? []) as { text: string; hashtags?: string[] }[];
+      const existing = new Set(savedCaptions.map((c) => c.text));
+      const additions = incoming
+        .filter((c) => c.text && !existing.has(c.text))
+        .map((c) => ({ text: c.text, hashtags: c.hashtags ?? [] }));
+      if (!additions.length) return;
+      const selectNone = !savedCaptions.some((c) => c.selected);
+      let next = [...savedCaptions, ...additions];
+      if (selectNone) {
+        const firstNew = additions[0].text;
+        next = next.map((c) => ({ ...c, selected: c.text === firstNew }));
+      }
+      updateSavedCaptions(next);
+    } catch (err) {
+      setCaptionError(err instanceof Error ? err.message : "Failed to generate captions");
+    } finally {
+      setGeneratingCaption(false);
+    }
+  };
+  const selectCaption = (idx: number) =>
+    updateSavedCaptions(savedCaptions.map((c, i) => ({ ...c, selected: i === idx })));
+  const removeCaption = (idx: number) => {
+    if (editingCaption && idx === primaryCaptionIdx) setEditingCaption(false);
+    updateSavedCaptions(savedCaptions.filter((_, i) => i !== idx));
+  };
+  const startEditCaption = () => {
+    const c = savedCaptions[primaryCaptionIdx];
+    if (!c) return;
+    setCapTextDraft(c.text);
+    setCapTagsDraft((c.hashtags ?? []).join(" "));
+    setEditingCaption(true);
+  };
+  const saveCaptionEdit = () => {
+    const tags = capTagsDraft.split(/[\s,]+/).map((t) => t.replace(/^#/, "").trim()).filter(Boolean);
+    updateSavedCaptions(
+      savedCaptions.map((c, i) => (i === primaryCaptionIdx ? { ...c, text: capTextDraft.trim(), hashtags: tags } : c))
+    );
+    setEditingCaption(false);
+  };
+  const copyCaption = async (text: string, hashtags: string[], key: number) => {
+    const formatted = hashtags.length ? `${text}\n\n${hashtags.map((t) => `#${t}`).join(" ")}` : text;
+    await navigator.clipboard.writeText(formatted);
+    setCopiedCap(key);
+    setTimeout(() => setCopiedCap(null), 2000);
   };
 
   const dndSensors = useSensors(
@@ -711,115 +858,6 @@ export default function ReelBuilderPage() {
             </div>
           </div>
 
-          {/* Phrase card — shows text for selected segment */}
-          {current && (
-            <div className="rounded-xl border border-hairline bg-surface p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="eyebrow-plain">Caption</span>
-                <div className="flex items-center gap-2">
-                  {currentVideo?.analysis && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={isGeneratingCaption}
-                      className="h-6 text-xs px-2 text-brand hover:text-brand"
-                      onClick={generateCaption}
-                      title="Draft the best caption from this clip's AI analysis"
-                    >
-                      {isGeneratingCaption ? (
-                        <>
-                          <ArrowsClockwise className="h-3.5 w-3.5 mr-1 animate-spin" /> Generating…
-                        </>
-                      ) : (
-                        <>
-                          <Sparkle className="h-3.5 w-3.5 mr-1" weight="fill" /> Generate
-                        </>
-                      )}
-                    </Button>
-                  )}
-                  {segments.length > 1 && (
-                    <span className="font-mono text-[10.5px] tracking-[0.05em] text-muted-foreground">
-                      {String(currentIndex + 1).padStart(2, "0")} / {String(segments.length).padStart(2, "0")}
-                    </span>
-                  )}
-                </div>
-              </div>
-              {captionError && (
-                <p className="text-xs text-destructive mb-2">{captionError}</p>
-              )}
-              {editingPhrase ? (
-                <div className="space-y-2">
-                  <textarea
-                    autoFocus
-                    className="text-sm w-full bg-transparent border rounded px-2 py-1.5 outline-none resize-none"
-                    rows={2}
-                    value={phraseDraft}
-                    onChange={(e) => setPhraseDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") { setEditingPhrase(false); setApplyToAll(false); }
-                    }}
-                  />
-                  <div className="flex items-center justify-between">
-                    {segments.length > 1 ? (
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <Checkbox
-                          checked={applyToAll}
-                          onCheckedChange={(v) => setApplyToAll(v === true)}
-                        />
-                        <span className="text-xs text-muted-foreground">Apply to all segments</span>
-                      </label>
-                    ) : (
-                      <div />
-                    )}
-                    <div className="flex gap-1.5">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 text-xs px-2"
-                        onClick={() => { setEditingPhrase(false); setApplyToAll(false); }}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="h-6 text-xs px-2"
-                        onClick={() => {
-                          const trimmed = phraseDraft.trim();
-                          if (applyToAll) {
-                            segments.forEach((seg) => {
-                              if (seg.section_text !== trimmed) {
-                                updateSegmentText({ segmentId: seg.id, text: trimmed });
-                              }
-                            });
-                          } else if (trimmed !== current.section_text) {
-                            updateSegmentText({ segmentId: current.id, text: trimmed });
-                          }
-                          setEditingPhrase(false);
-                          setApplyToAll(false);
-                        }}
-                      >
-                        Save
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div
-                  className="flex items-start gap-1 cursor-pointer group/phrase"
-                  onClick={() => {
-                    setPhraseDraft(current.section_text);
-                    setEditingPhrase(true);
-                  }}
-                >
-                  <p className="text-sm whitespace-pre-line flex-1">
-                    {current.section_text || <span className="text-muted-foreground italic">Add text...</span>}
-                  </p>
-                  <PencilSimple className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 group-hover/phrase:opacity-100 transition-opacity mt-0.5" />
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Text overlay controls */}
           <div className="space-y-3 rounded-lg border p-3">
             <div className="flex items-center justify-between">
@@ -834,6 +872,102 @@ export default function ReelBuilderPage() {
             </div>
 
             {burnText && (
+            <div className="space-y-3">
+              {/* On-screen text for the selected clip */}
+              {current && (
+                <div className="rounded-lg border border-hairline bg-surface p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="eyebrow-plain">On-screen text</span>
+                    <div className="flex items-center gap-2">
+                      {currentVideo?.analysis && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={generatingOverlay}
+                          className="h-6 text-xs px-2 text-brand hover:text-brand"
+                          onClick={generateOverlayText}
+                          title="Draft short overlay text from this clip's AI analysis"
+                        >
+                          {generatingOverlay ? (
+                            <><ArrowsClockwise className="h-3.5 w-3.5 mr-1 animate-spin" /> Generating…</>
+                          ) : (
+                            <><Sparkle className="h-3.5 w-3.5 mr-1" weight="fill" /> Generate</>
+                          )}
+                        </Button>
+                      )}
+                      {segments.length > 1 && (
+                        <span className="font-mono text-[10.5px] tracking-[0.05em] text-muted-foreground">
+                          {String(currentIndex + 1).padStart(2, "0")} / {String(segments.length).padStart(2, "0")}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {overlayError && <p className="text-xs text-destructive mb-2">{overlayError}</p>}
+                  {editingPhrase ? (
+                    <div className="space-y-2">
+                      <textarea
+                        autoFocus
+                        className="text-sm w-full bg-transparent border rounded px-2 py-1.5 outline-none resize-none"
+                        rows={2}
+                        value={phraseDraft}
+                        onChange={(e) => setPhraseDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") { setEditingPhrase(false); setApplyToAll(false); }
+                        }}
+                      />
+                      <div className="flex items-center justify-between">
+                        {segments.length > 1 ? (
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <Checkbox checked={applyToAll} onCheckedChange={(v) => setApplyToAll(v === true)} />
+                            <span className="text-xs text-muted-foreground">Apply to all clips</span>
+                          </label>
+                        ) : (
+                          <div />
+                        )}
+                        <div className="flex gap-1.5">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-xs px-2"
+                            onClick={() => { setEditingPhrase(false); setApplyToAll(false); }}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="h-6 text-xs px-2"
+                            onClick={() => {
+                              const trimmed = phraseDraft.trim();
+                              if (applyToAll) {
+                                segments.forEach((seg) => {
+                                  if (seg.section_text !== trimmed) updateSegmentText({ segmentId: seg.id, text: trimmed });
+                                });
+                              } else if (current && trimmed !== current.section_text) {
+                                updateSegmentText({ segmentId: current.id, text: trimmed });
+                              }
+                              setEditingPhrase(false);
+                              setApplyToAll(false);
+                            }}
+                          >
+                            Save
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className="flex items-start gap-1 cursor-pointer group/phrase"
+                      onClick={() => { setPhraseDraft(current.section_text); setEditingPhrase(true); }}
+                    >
+                      <p className="text-sm whitespace-pre-line flex-1">
+                        {current.section_text || <span className="text-muted-foreground italic">Add text…</span>}
+                      </p>
+                      <PencilSimple className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 group-hover/phrase:opacity-100 transition-opacity mt-0.5" />
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Position</Label>
@@ -952,6 +1086,169 @@ export default function ReelBuilderPage() {
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+            )}
+          </div>
+
+          {/* Caption — Instagram post caption + hashtags */}
+          <div className="space-y-3 rounded-lg border p-3">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Caption</p>
+
+            {/* Vibe — derived from the video, collapsed, adjustable */}
+            <div className="rounded-lg border border-hairline bg-surface px-3 py-2 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-muted-foreground">
+                  Vibe:{" "}
+                  <span className="text-ink font-medium capitalize">{captionMood}</span>
+                  <span className="text-muted-foreground"> · </span>
+                  <span className="text-ink font-medium capitalize">{captionTense}</span>
+                  {!vibeOverridden && <span className="text-muted-foreground/70"> · from video</span>}
+                </span>
+                <button
+                  className="text-[11px] text-brand hover:underline shrink-0"
+                  onClick={() => setVibeOpen((o) => !o)}
+                >
+                  {vibeOpen ? "Done" : "Adjust"}
+                </button>
+              </div>
+
+              {vibeOpen && (
+                <div className="space-y-2 pt-1">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Mood</Label>
+                    <div className="flex gap-1 flex-wrap">
+                      {CAPTION_MOODS.map((m) => (
+                        <Button key={m} variant={captionMood === m ? "default" : "outline"} size="sm" className="h-7 text-xs px-2 capitalize" onClick={() => { setCaptionMood(m); setVibeOverridden(true); }}>{m}</Button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Tense</Label>
+                    <div className="flex gap-1 flex-wrap">
+                      {CAPTION_TENSES.map((te) => (
+                        <Button key={te} variant={captionTense === te ? "default" : "outline"} size="sm" className="h-7 text-xs px-2 capitalize" onClick={() => { setCaptionTense(te); setVibeOverridden(true); }}>{te}</Button>
+                      ))}
+                    </div>
+                  </div>
+                  {vibeOverridden && (
+                    <button
+                      className="text-[11px] text-muted-foreground hover:text-ink"
+                      onClick={() => setVibeOverridden(false)}
+                    >
+                      Reset to video vibe
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {voiceProfile?.text ? (
+              <label className="flex items-center justify-between gap-2 rounded-lg border border-hairline bg-surface px-3 py-2 cursor-pointer">
+                <span className="flex items-center gap-1.5">
+                  <Sparkle className="h-3.5 w-3.5 text-brand" weight="fill" />
+                  <span className="text-xs font-medium">Match my voice</span>
+                </span>
+                <Switch checked={matchVoice} onCheckedChange={setMatchVoice} />
+              </label>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                Tip: build a voice profile in{" "}
+                <button className="text-brand hover:underline" onClick={() => navigate("/account")}>Account</button>{" "}
+                to make captions sound like you.
+              </p>
+            )}
+
+            <Button className="w-full" size="sm" disabled={generatingCaption || segments.length === 0} onClick={generateCaptions}>
+              {generatingCaption ? (
+                <><Sparkle className="h-4 w-4 mr-1 animate-pulse" /> Generating…</>
+              ) : (
+                <><Sparkle className="h-4 w-4 mr-1" /> Generate captions</>
+              )}
+            </Button>
+            {captionError && <p className="text-xs text-destructive">{captionError}</p>}
+
+            {/* Selected caption — editable inline */}
+            {primaryCaptionIdx >= 0 && (
+              <div className="rounded-lg border border-brand ring-1 ring-brand/40 bg-card p-3 space-y-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-brand">Selected caption</p>
+                {editingCaption ? (
+                  <div className="space-y-2">
+                    <textarea
+                      autoFocus
+                      rows={3}
+                      className="text-sm w-full bg-transparent border rounded px-2 py-1.5 outline-none resize-none"
+                      value={capTextDraft}
+                      onChange={(e) => setCapTextDraft(e.target.value)}
+                    />
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Hashtags (space or comma separated)</Label>
+                      <Input value={capTagsDraft} onChange={(e) => setCapTagsDraft(e.target.value)} placeholder="travel sunset vibes" className="h-7 text-xs" />
+                    </div>
+                    <div className="flex justify-end gap-1.5">
+                      <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => setEditingCaption(false)}>Cancel</Button>
+                      <Button size="sm" className="h-6 text-xs px-2" onClick={saveCaptionEdit}>Save</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-sm whitespace-pre-line">{savedCaptions[primaryCaptionIdx].text}</p>
+                    {savedCaptions[primaryCaptionIdx].hashtags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {savedCaptions[primaryCaptionIdx].hashtags.map((tag) => (
+                          <Badge key={tag} variant="secondary" className="text-[10px]">#{tag}</Badge>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={startEditCaption}>
+                        <PencilSimple className="h-3.5 w-3.5 mr-1" /> Edit
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => copyCaption(savedCaptions[primaryCaptionIdx].text, savedCaptions[primaryCaptionIdx].hashtags, primaryCaptionIdx)}>
+                        {copiedCap === primaryCaptionIdx ? (
+                          <><Check className="h-3.5 w-3.5 mr-1 text-green-500" /> Copied!</>
+                        ) : (
+                          <><Copy className="h-3.5 w-3.5 mr-1" /> Copy</>
+                        )}
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-6 text-xs px-2 text-destructive hover:text-destructive ml-auto" onClick={() => removeCaption(primaryCaptionIdx)} title="Remove">
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Other options */}
+            {altCaptions.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Other options</p>
+                {altCaptions.map(({ c, i }) => (
+                  <div key={i} className="rounded-lg border border-hairline bg-card p-2.5 space-y-1.5">
+                    <p className="text-sm whitespace-pre-line">{c.text}</p>
+                    {c.hashtags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {c.hashtags.map((tag) => (
+                          <Badge key={tag} variant="secondary" className="text-[10px]">#{tag}</Badge>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1">
+                      <Button variant="outline" size="sm" className="h-6 text-xs px-2" onClick={() => selectCaption(i)}>Select</Button>
+                      <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => copyCaption(c.text, c.hashtags, i)}>
+                        {copiedCap === i ? (
+                          <><Check className="h-3.5 w-3.5 mr-1 text-green-500" /> Copied!</>
+                        ) : (
+                          <><Copy className="h-3.5 w-3.5 mr-1" /> Copy</>
+                        )}
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-6 text-xs px-2 text-destructive hover:text-destructive ml-auto" onClick={() => removeCaption(i)} title="Remove">
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
