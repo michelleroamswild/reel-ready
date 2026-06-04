@@ -15,7 +15,6 @@ import ReelsPage from "@/pages/ReelsPage";
 import ReelBuilderPage from "@/pages/ReelBuilderPage";
 import TrialBatchPage from "@/pages/TrialBatchPage";
 import VideoDetailPage from "@/pages/VideoDetailPage";
-import TrendsPage from "@/pages/TrendsPage";
 import AccountPage from "@/pages/AccountPage";
 import TemplatesPage from "@/pages/TemplatesPage";
 import TemplateDetailPage from "@/pages/TemplateDetailPage";
@@ -75,7 +74,6 @@ function AppRoutes() {
                         <Route path="/phrases" element={<PhrasesPage />} />
                         <Route path="/videos" element={<VideosPage />} />
                         <Route path="/templates" element={<TemplatesPage />} />
-                        <Route path="/trends" element={<TrendsPage />} />
                         <Route path="/account" element={<AccountPage />} />
                         <Route path="/design-system" element={<DesignSystemPage />} />
                         <Route path="*" element={<NotFound />} />
