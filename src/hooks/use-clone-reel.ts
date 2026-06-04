@@ -215,12 +215,14 @@ export function useCloneReel() {
 
         return reelId;
       } catch (err) {
-        // Rollback: delete the reel since segments failed
-        await supabase
-          .from("reels")
-          .delete()
-          .eq("id", reelId)
-          .catch(() => {});
+        // Rollback: delete the reel since segments failed. The Supabase query
+        // builder is a thenable without a .catch method, so guard with try/await
+        // (calling .catch() directly throws and would strand the UI on "building").
+        try {
+          await supabase.from("reels").delete().eq("id", reelId);
+        } catch {
+          /* ignore rollback failure */
+        }
         setState({
           step: "error",
           template: state.template,

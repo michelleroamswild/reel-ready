@@ -186,18 +186,31 @@ Return one entry per segment, in order. Only return the JSON array.`;
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.4,
-          maxOutputTokens: 4000,
+          maxOutputTokens: 8192,
           responseMimeType: "application/json",
+          // Disable "thinking" so the full token budget goes to the JSON output.
+          thinkingConfig: { thinkingBudget: 0 },
         },
       }),
     });
 
     const data = await geminiResponse.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!geminiResponse.ok || data?.error) {
+      return new Response(
+        JSON.stringify({ error: `Gemini API error (${geminiResponse.status}): ${data?.error?.message ?? "unknown"}`, segments: [] }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    // Gemini may split output across multiple parts — join them so the JSON
+    // isn't truncated mid-string.
+    const cand = data?.candidates?.[0];
+    const text = (cand?.content?.parts ?? [])
+      .map((p: { text?: string }) => p.text ?? "")
+      .join("");
 
     if (!text) {
       return new Response(
-        JSON.stringify({ error: "Gemini returned no result", segments: [] }),
+        JSON.stringify({ error: `Gemini returned no result (reason: ${cand?.finishReason ?? "unknown"})`, segments: [] }),
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -205,7 +218,15 @@ Return one entry per segment, in order. Only return the JSON array.`;
       );
     }
 
-    const segments = JSON.parse(text);
+    let segments;
+    try {
+      segments = JSON.parse(text);
+    } catch {
+      return new Response(
+        JSON.stringify({ error: `Gemini returned malformed JSON (finishReason: ${cand?.finishReason ?? "?"}, ${text.length} chars)`, segments: [] }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Build a duration lookup for validation
     const durationMap = new Map<string, number>();
