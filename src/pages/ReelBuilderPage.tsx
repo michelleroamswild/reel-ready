@@ -85,6 +85,46 @@ function parseTextShadowIntensity(value: string | number | undefined): number {
   return Math.min(10, Math.max(1, num));
 }
 
+/** Derive a caption mood + tense from the clips' AI analysis ("video vibes"). */
+function deriveVibe(
+  analyses: Array<Record<string, unknown> | null | undefined>
+): { mood: string; tense: string } {
+  const present = analyses.filter(Boolean) as Array<Record<string, unknown>>;
+  if (!present.length) return { mood: "playful", tense: "timeless" };
+
+  const avg = (key: string): number | null => {
+    const nums = present.map((a) => a[key]).filter((v): v is number => typeof v === "number");
+    return nums.length ? nums.reduce((s, n) => s + n, 0) / nums.length : null;
+  };
+  const energy = avg("energyScore"); // 1-10
+  const moodScore = avg("moodScore"); // -5..5
+  const text = present
+    .map((a) => `${a.mood ?? ""} ${a.structure ?? ""} ${a.summary ?? ""}`)
+    .join(" ")
+    .toLowerCase();
+
+  let mood: string;
+  if (/nostalg|emotional|tender|melanchol|wistful|sentimental|moody|somber|intimate/.test(text)) {
+    mood = "emotional";
+  } else if (energy != null && energy >= 7 && (moodScore ?? 0) >= 1) {
+    mood = "playful";
+  } else if (energy != null && energy >= 7) {
+    mood = "edgy";
+  } else if (energy != null && energy <= 4) {
+    mood = "chill";
+  } else if ((moodScore ?? 0) >= 2) {
+    mood = "confident";
+  } else {
+    mood = "chill";
+  }
+
+  const tense = /nostalg|memory|throwback|reminis|reflect|looking back|years ago|used to|last (year|summer|time)/.test(text)
+    ? "reflective"
+    : "timeless";
+
+  return { mood, tense };
+}
+
 export default function ReelBuilderPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -129,11 +169,11 @@ export default function ReelBuilderPage() {
 
   // Caption generation (Instagram post caption + hashtags)
   const CAPTION_MOODS = ["confident", "chill", "emotional", "playful", "edgy"] as const;
-  const CAPTION_TONES = ["casual", "witty", "inspirational", "storytelling", "minimal"] as const;
   const CAPTION_TENSES = ["timeless", "past", "reflective", "any"] as const;
   const [captionMood, setCaptionMood] = useState<string>("playful");
-  const [captionTone, setCaptionTone] = useState<string>("casual");
   const [captionTense, setCaptionTense] = useState<string>("timeless");
+  const [vibeOverridden, setVibeOverridden] = useState(false); // user manually changed mood/tense
+  const [vibeOpen, setVibeOpen] = useState(false); // expand the adjust controls
   const [generatingCaption, setGeneratingCaption] = useState(false);
   const [captionError, setCaptionError] = useState<string | null>(null);
   const [matchVoice, setMatchVoice] = useState(true);
@@ -208,6 +248,22 @@ export default function ReelBuilderPage() {
   const currentVideo = current ? videos.find((v) => v.id === current.video_id) : undefined;
   const segmentIds = useMemo(() => segments.map((s) => s.id), [segments]);
 
+  // Derive the caption vibe (mood + tense) from the clips' analysis; keep it in
+  // sync until the user manually overrides it.
+  const derivedVibe = useMemo(
+    () =>
+      deriveVibe(
+        segments.map((s) => videos.find((v) => v.id === s.video_id)?.analysis as Record<string, unknown> | null)
+      ),
+    [segments, videos]
+  );
+  useEffect(() => {
+    if (!vibeOverridden) {
+      setCaptionMood(derivedVibe.mood);
+      setCaptionTense(derivedVibe.tense);
+    }
+  }, [derivedVibe, vibeOverridden]);
+
   // --- Text overlay (short on-screen words) ---
   // Draft the best short overlay text from the clip's analysis, write it onto the
   // clip, and open the inline editor so the user can refine it.
@@ -257,7 +313,6 @@ export default function ReelBuilderPage() {
       const { data, error } = await supabase.functions.invoke("generate-caption", {
         body: {
           mood: captionMood,
-          tone: captionTone,
           tense: captionTense,
           segments: segmentData,
           matchVoice: matchVoice && !!voiceProfile?.text,
@@ -1040,29 +1095,52 @@ export default function ReelBuilderPage() {
           <div className="space-y-3 rounded-lg border p-3">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Caption</p>
 
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Mood</Label>
-              <div className="flex gap-1 flex-wrap">
-                {CAPTION_MOODS.map((m) => (
-                  <Button key={m} variant={captionMood === m ? "default" : "outline"} size="sm" className="h-7 text-xs px-2 capitalize" onClick={() => setCaptionMood(m)}>{m}</Button>
-                ))}
+            {/* Vibe — derived from the video, collapsed, adjustable */}
+            <div className="rounded-lg border border-hairline bg-surface px-3 py-2 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-muted-foreground">
+                  Vibe:{" "}
+                  <span className="text-ink font-medium capitalize">{captionMood}</span>
+                  <span className="text-muted-foreground"> · </span>
+                  <span className="text-ink font-medium capitalize">{captionTense}</span>
+                  {!vibeOverridden && <span className="text-muted-foreground/70"> · from video</span>}
+                </span>
+                <button
+                  className="text-[11px] text-brand hover:underline shrink-0"
+                  onClick={() => setVibeOpen((o) => !o)}
+                >
+                  {vibeOpen ? "Done" : "Adjust"}
+                </button>
               </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Tone</Label>
-              <div className="flex gap-1 flex-wrap">
-                {CAPTION_TONES.map((t) => (
-                  <Button key={t} variant={captionTone === t ? "default" : "outline"} size="sm" className="h-7 text-xs px-2 capitalize" onClick={() => setCaptionTone(t)}>{t}</Button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Tense</Label>
-              <div className="flex gap-1 flex-wrap">
-                {CAPTION_TENSES.map((te) => (
-                  <Button key={te} variant={captionTense === te ? "default" : "outline"} size="sm" className="h-7 text-xs px-2 capitalize" onClick={() => setCaptionTense(te)}>{te}</Button>
-                ))}
-              </div>
+
+              {vibeOpen && (
+                <div className="space-y-2 pt-1">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Mood</Label>
+                    <div className="flex gap-1 flex-wrap">
+                      {CAPTION_MOODS.map((m) => (
+                        <Button key={m} variant={captionMood === m ? "default" : "outline"} size="sm" className="h-7 text-xs px-2 capitalize" onClick={() => { setCaptionMood(m); setVibeOverridden(true); }}>{m}</Button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Tense</Label>
+                    <div className="flex gap-1 flex-wrap">
+                      {CAPTION_TENSES.map((te) => (
+                        <Button key={te} variant={captionTense === te ? "default" : "outline"} size="sm" className="h-7 text-xs px-2 capitalize" onClick={() => { setCaptionTense(te); setVibeOverridden(true); }}>{te}</Button>
+                      ))}
+                    </div>
+                  </div>
+                  {vibeOverridden && (
+                    <button
+                      className="text-[11px] text-muted-foreground hover:text-ink"
+                      onClick={() => setVibeOverridden(false)}
+                    >
+                      Reset to video vibe
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {voiceProfile?.text ? (
