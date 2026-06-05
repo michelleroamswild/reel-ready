@@ -3,7 +3,6 @@ import {
   ChatText,
   FilmStrip,
   VideoCamera,
-  TrendUp,
   UserCircle,
   Swatches,
   MagnifyingGlass,
@@ -15,7 +14,6 @@ const libraryLinks = [
   { to: "/", label: "Reels", icon: VideoCamera, end: true },
   { to: "/videos", label: "Videos", icon: FilmStrip },
   { to: "/phrases", label: "Phrases", icon: ChatText },
-  { to: "/trends", label: "Trends", icon: TrendUp },
 ];
 
 const workshopLinks = [
