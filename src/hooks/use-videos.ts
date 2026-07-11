@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase, getCurrentUserId } from "@/lib/supabase";
 import { uploadToR2, UploadCancelledError } from "@/lib/storage";
+import { getVideoDuration, getVideoDurationFromUrl } from "@/lib/duration";
 import type { Video, VideoAnalysis } from "@/types/video";
 
 const VIDEOS_KEY = ["videos"];
@@ -83,6 +84,9 @@ export function useVideos() {
       videoType?: "clip" | "edit";
       signal?: AbortSignal;
     }) => {
+      // Read the duration from the local file before uploading (cheap, metadata only).
+      const duration = await getVideoDuration(file).catch(() => null);
+
       const { key, url } = await uploadToR2(file, onProgress, signal);
 
       if (signal?.aborted) throw new UploadCancelledError();
@@ -95,6 +99,7 @@ export function useVideos() {
           r2_key: key,
           url,
           size_bytes: file.size,
+          duration_seconds: duration,
           mime_type: file.type,
           video_type: videoType ?? "clip",
           user_id,
@@ -161,6 +166,40 @@ export function useVideos() {
       }
       backfillingRef.current = false;
       queryClient.invalidateQueries({ queryKey: VIDEOS_KEY });
+    })();
+  }, [videos, isLoading, queryClient]);
+
+  // Backfill durations for videos uploaded before we captured them.
+  // preload="metadata" only fetches the file header via a range request — cheap.
+  const durationBackfillingRef = useRef(false);
+  const durationBackfilledIds = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (isLoading || durationBackfillingRef.current) return;
+
+    const missing = videos.filter(
+      (v) => v.duration_seconds == null && !durationBackfilledIds.current.has(v.id)
+    );
+    if (missing.length === 0) return;
+
+    durationBackfillingRef.current = true;
+
+    (async () => {
+      let changed = false;
+      for (const v of missing) {
+        durationBackfilledIds.current.add(v.id);
+        try {
+          const duration = await getVideoDurationFromUrl(v.url);
+          if (duration != null) {
+            await supabase.from("videos").update({ duration_seconds: duration }).eq("id", v.id);
+            changed = true;
+          }
+        } catch (err) {
+          console.warn("Duration backfill failed for", v.id, err);
+        }
+      }
+      durationBackfillingRef.current = false;
+      if (changed) queryClient.invalidateQueries({ queryKey: VIDEOS_KEY });
     })();
   }, [videos, isLoading, queryClient]);
 

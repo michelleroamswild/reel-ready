@@ -22,6 +22,7 @@ import {
 import { FilmStrip, UploadSimple, Trash, ArrowsClockwise, Sparkle, ArrowClockwise, Faders, VideoCamera, X, CheckCircle, CircleNotch } from "@phosphor-icons/react";
 import { VideoThumbnail } from "@/components/VideoThumbnail";
 import { VideoFilterSheet, emptyFilters, type VideoFilters } from "@/components/VideoFilterSheet";
+import { formatDuration, durationBucket } from "@/lib/duration";
 import type { Video } from "@/types/video";
 
 interface UploadProgress {
@@ -77,6 +78,10 @@ export default function VideosPage() {
   const filteredVideos = useMemo(() => {
     return videos.filter((v: Video) => {
       if (filters.type.length > 0 && !filters.type.includes(v.video_type)) return false;
+      if (filters.length.length > 0) {
+        if (v.duration_seconds == null) return false;
+        if (!filters.length.includes(durationBucket(v.duration_seconds))) return false;
+      }
       if (!v.analysis) {
         return filters.mood.length === 0 &&
           filters.energy.length === 0 &&
@@ -264,7 +269,7 @@ export default function VideosPage() {
         <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
           <button
             onClick={() => setFilters(emptyFilters)}
-            className={`chip ${filters.mood.length === 0 ? "chip-dark" : "chip-outline"}`}
+            className={`chip !text-[11px] !px-2.5 !py-1 ${filters.mood.length === 0 ? "chip-dark" : "chip-outline"}`}
           >
             All <span className="opacity-60">· {videos.length}</span>
           </button>
@@ -274,7 +279,7 @@ export default function VideosPage() {
               <button
                 key={mood}
                 onClick={() => toggleMoodFilter(mood)}
-                className={`chip capitalize ${active ? "chip-dark" : "chip-outline"}`}
+                className={`chip capitalize !text-[11px] !px-2.5 !py-1 ${active ? "chip-dark" : "chip-outline"}`}
               >
                 {mood} <span className="opacity-60">· {count}</span>
               </button>
@@ -392,6 +397,13 @@ export default function VideosPage() {
                 {/* Edit type badge */}
                 {v.video_type === "edit" && <span className="badge !bg-brand !text-brand-ink">Edit</span>}
 
+                {/* Duration pill */}
+                {v.duration_seconds != null && (
+                  <span className="badge !left-auto !right-2 tabular-nums group-hover:opacity-0 transition-opacity">
+                    {formatDuration(v.duration_seconds)}
+                  </span>
+                )}
+
                 {/* Hover actions */}
                 <div className="absolute top-1.5 right-1.5 z-10 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
@@ -423,11 +435,12 @@ export default function VideosPage() {
                 )}
 
                 <div className="meta">
-                  <p className="text-[11px] font-semibold text-white tracking-tight truncate drop-shadow-sm">
+                  <p className="text-[12px] font-semibold tracking-tight leading-tight truncate drop-shadow-sm">
                     {v.filename}
                   </p>
-                  <p className="text-[10px] text-white/75 mt-0.5">
+                  <p className="mt-1 text-[10px] font-medium text-white/75 tracking-[0.02em]">
                     {v.analysis?.mood && <span className="capitalize">{v.analysis.mood} · </span>}
+                    {v.duration_seconds != null && <span className="tabular-nums">{formatDuration(v.duration_seconds)} · </span>}
                     {formatSize(v.size_bytes)}
                   </p>
                 </div>
