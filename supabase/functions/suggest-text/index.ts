@@ -2,7 +2,7 @@ import { selectTrendsForClip, type Trend } from "../_shared/trends.ts";
 import { getAuthUser } from "../_shared/auth.ts";
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!;
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${GEMINI_API_KEY}`;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -266,11 +266,27 @@ Only return the JSON array.`;
     });
 
     const data = await geminiResponse.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const candidate = data?.candidates?.[0];
+    const text = candidate?.content?.parts?.[0]?.text;
 
     if (!text) {
       return new Response(
         JSON.stringify({ error: "Gemini returned no result", suggestions: [] }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // A MAX_TOKENS stop truncates the JSON array mid-object, which would
+    // otherwise surface as an opaque "Expected double-quoted property name".
+    if (candidate.finishReason && candidate.finishReason !== "STOP") {
+      return new Response(
+        JSON.stringify({
+          error: `Gemini stopped early (${candidate.finishReason}) — response was incomplete.`,
+          suggestions: [],
+        }),
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
