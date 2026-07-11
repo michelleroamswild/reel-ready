@@ -22,10 +22,10 @@ import { useState } from "react";
 
 function Stat({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
-    <div className="rounded-xl border border-hairline bg-surface px-4 py-3">
-      <p className="eyebrow-plain mb-1.5">{label}</p>
-      <p className="ed-display text-[28px] capitalize text-ink leading-none">{value}</p>
-      {sub && <p className="text-[11px] text-muted-foreground mt-1">{sub}</p>}
+    <div className="rounded-xl border border-hairline bg-surface px-3.5 py-2.5">
+      <p className="eyebrow-plain mb-1">{label}</p>
+      <p className="text-[14px] font-semibold capitalize text-ink leading-snug">{value}</p>
+      {sub && <p className="text-[10.5px] text-muted-foreground mt-0.5">{sub}</p>}
     </div>
   );
 }

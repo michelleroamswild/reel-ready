@@ -29,7 +29,6 @@ function AppRoutes() {
   // Desktop: page content sits in the right column beside the sidebar; editorial padding
   const mainPagesClass = "mx-auto max-w-lg px-4 pt-6 pb-24 md:max-w-[1400px] md:px-10 md:pt-10 md:pb-12";
   const wideClass = "mx-auto max-w-lg px-4 pt-6 pb-24 md:max-w-[1400px] md:px-10 md:pt-10 md:pb-12";
-  const medClass = "mx-auto max-w-4xl px-4 pt-6 pb-24 md:px-10 md:pt-10 md:pb-12";
   const narrowClass = "mx-auto max-w-lg px-4 pt-6 pb-24 md:max-w-2xl md:px-10 md:pt-10 md:pb-12";
 
   return (
@@ -43,7 +42,7 @@ function AppRoutes() {
               <PullToRefresh>
                 <Routes>
                   <Route path="/videos/:id" element={
-                    <main className={medClass}>
+                    <main className={wideClass}>
                       <VideoDetailPage />
                     </main>
                   } />
