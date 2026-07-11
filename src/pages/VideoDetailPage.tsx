@@ -14,9 +14,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SuggestTextDialog } from "@/components/SuggestTextDialog";
 import { TrialReelDialog } from "@/components/TrialReelDialog";
-import { ArrowLeft, Trash, ArrowsClockwise, Sparkle, ArrowClockwise, ChatText, PencilSimple, FilmStrip, VideoCamera, Flask } from "@phosphor-icons/react";
+import { ArrowLeft, Trash, ArrowsClockwise, Sparkle, ArrowClockwise, ChatText, PencilSimple, FilmStrip, VideoCamera, Flask, DotsThree } from "@phosphor-icons/react";
 import { useGenerateTrialReelsFromVideo } from "@/hooks/use-trial-reels";
 import { useState } from "react";
 
@@ -71,9 +77,29 @@ export default function VideoDetailPage() {
 
   const a = video.analysis;
 
+  const handleCreateReel = async () => {
+    setCreatingReel(true);
+    try {
+      const reelId = await createQuickReel({
+        title: video.filename.replace(/\.[^.]+$/, "").slice(0, 40) || "New reel",
+        videoId: video.id,
+        startSeconds: 0,
+        endSeconds: video.duration_seconds ?? 5,
+      });
+      navigate(`/reels/${reelId}`);
+    } catch {
+      setCreatingReel(false);
+    }
+  };
+
+  const analyzeLabel = isAnalyzing ? "Analyzing…" : a ? "Re-analyze" : "Analyze";
+  const AnalyzeIcon = isAnalyzing ? ArrowsClockwise : a ? ArrowClockwise : Sparkle;
+
   return (
     <div className="space-y-6 fade-up">
-      {/* Header: back + actions */}
+      {/* Header: back + actions.
+          Mobile keeps only the primary action visible and folds the rest into a
+          menu — five pill buttons overflow a phone width. */}
       <div className="flex items-center justify-between gap-2">
         <button
           onClick={() => navigate("/videos")}
@@ -82,74 +108,111 @@ export default function VideoDetailPage() {
           <ArrowLeft className="h-4 w-4" /> Videos
         </button>
         <div className="hidden md:block" />
-        <div className="flex items-center gap-1.5">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={isAnalyzing}
-            onClick={() => analyzeVideo(video)}
-            className="h-8 rounded-full border-hairline-strong"
-          >
-            {isAnalyzing ? (
-              <ArrowsClockwise className="h-4 w-4 mr-1 animate-spin" />
-            ) : a ? (
-              <ArrowClockwise className="h-4 w-4 mr-1" />
-            ) : (
-              <Sparkle className="h-4 w-4 mr-1 text-brand" weight="fill" />
-            )}
-            {isAnalyzing ? "Analyzing…" : a ? "Re-analyze" : "Analyze"}
-          </Button>
-          {a && (
-            <>
-              <Button
-                size="sm"
-                disabled={creatingReel}
-                onClick={async () => {
-                  setCreatingReel(true);
-                  try {
-                    const reelId = await createQuickReel({
-                      title: video.filename.replace(/\.[^.]+$/, "").slice(0, 40) || "New reel",
-                      videoId: video.id,
-                      startSeconds: 0,
-                      endSeconds: video.duration_seconds ?? 5,
-                    });
-                    navigate(`/reels/${reelId}`);
-                  } catch {
-                    setCreatingReel(false);
-                  }
-                }}
-                className="h-8 rounded-full bg-brand text-brand-ink hover:bg-brand/90 font-semibold"
-              >
-                <FilmStrip className="h-4 w-4 mr-1" weight="fill" />
-                {creatingReel ? "Creating…" : "Create reel"}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowSuggestText(true)}
-                className="h-8 rounded-full border-hairline-strong"
-              >
-                <ChatText className="h-4 w-4 mr-1" /> Text
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowTrialConfirm(true)}
-                disabled={generateTrialReels.isPending}
-                className="h-8 rounded-full border-hairline-strong"
-              >
-                <Flask className="h-4 w-4 mr-1" />
-                {generateTrialReels.isPending ? "Generating…" : "Trial"}
-              </Button>
-            </>
+
+        <div className="flex items-center gap-1.5 min-w-0">
+          {/* Primary action — always visible */}
+          {a ? (
+            <Button
+              size="sm"
+              disabled={creatingReel}
+              onClick={handleCreateReel}
+              className="h-8 rounded-full bg-brand text-brand-ink hover:bg-brand/90 font-semibold shrink-0"
+            >
+              <FilmStrip className="h-4 w-4 mr-1" weight="fill" />
+              {creatingReel ? "Creating…" : "Create reel"}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              disabled={isAnalyzing}
+              onClick={() => analyzeVideo(video)}
+              className="h-8 rounded-full bg-brand text-brand-ink hover:bg-brand/90 font-semibold shrink-0"
+            >
+              <AnalyzeIcon className={`h-4 w-4 mr-1 ${isAnalyzing ? "animate-spin" : ""}`} weight="fill" />
+              {analyzeLabel}
+            </Button>
           )}
-          <button
-            onClick={() => setShowDelete(true)}
-            className="h-8 w-8 grid place-items-center rounded-full text-muted-foreground hover:bg-surface-2 hover:text-destructive transition-colors"
-            title="Delete"
-          >
-            <Trash className="h-4 w-4" />
-          </button>
+
+          {/* Desktop: secondary actions laid out in full */}
+          <div className="hidden md:flex items-center gap-1.5">
+            {a && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isAnalyzing}
+                  onClick={() => analyzeVideo(video)}
+                  className="h-8 rounded-full border-hairline-strong"
+                >
+                  <AnalyzeIcon className={`h-4 w-4 mr-1 ${isAnalyzing ? "animate-spin" : ""}`} />
+                  {analyzeLabel}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowSuggestText(true)}
+                  className="h-8 rounded-full border-hairline-strong"
+                >
+                  <ChatText className="h-4 w-4 mr-1" /> Text
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowTrialConfirm(true)}
+                  disabled={generateTrialReels.isPending}
+                  className="h-8 rounded-full border-hairline-strong"
+                >
+                  <Flask className="h-4 w-4 mr-1" />
+                  {generateTrialReels.isPending ? "Generating…" : "Trial"}
+                </Button>
+              </>
+            )}
+            <button
+              onClick={() => setShowDelete(true)}
+              className="h-8 w-8 grid place-items-center rounded-full text-muted-foreground hover:bg-surface-2 hover:text-destructive transition-colors"
+              title="Delete"
+            >
+              <Trash className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Mobile: everything else behind an overflow menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="md:hidden h-8 w-8 grid place-items-center rounded-full border border-hairline-strong text-ink hover:bg-surface-2 transition-colors shrink-0"
+                aria-label="More actions"
+              >
+                <DotsThree className="h-5 w-5" weight="bold" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {a && (
+                <>
+                  <DropdownMenuItem disabled={isAnalyzing} onClick={() => analyzeVideo(video)}>
+                    <AnalyzeIcon className={`h-4 w-4 mr-2 ${isAnalyzing ? "animate-spin" : ""}`} />
+                    {analyzeLabel}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowSuggestText(true)}>
+                    <ChatText className="h-4 w-4 mr-2" /> Text
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={generateTrialReels.isPending}
+                    onClick={() => setShowTrialConfirm(true)}
+                  >
+                    <Flask className="h-4 w-4 mr-2" />
+                    {generateTrialReels.isPending ? "Generating…" : "Trial"}
+                  </DropdownMenuItem>
+                </>
+              )}
+              <DropdownMenuItem
+                onClick={() => setShowDelete(true)}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash className="h-4 w-4 mr-2" /> Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

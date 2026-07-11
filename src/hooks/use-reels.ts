@@ -213,7 +213,9 @@ export function useReels() {
         .insert({
           phrase_id: null,
           title,
-          target_duration_seconds: endSeconds - startSeconds,
+          // target_duration_seconds is an integer column; endSeconds comes from
+          // the video's real-valued duration, so round rather than truncate.
+          target_duration_seconds: Math.max(1, Math.round(endSeconds - startSeconds)),
           user_id,
         })
         .select()

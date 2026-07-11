@@ -346,7 +346,10 @@ export default function ReelsPage() {
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
-                          className="absolute top-1.5 right-1.5 z-10 h-7 w-7 grid place-items-center rounded-full bg-black/40 text-white hover:bg-black/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                          // Touch has no hover, so the menu stays visible on mobile and
+                          // only hides-until-hover from md up. before:-inset-2 grows the
+                          // tap target to ~44px without changing how the pill looks.
+                          className="absolute top-1.5 right-1.5 z-10 h-7 w-7 grid place-items-center rounded-full bg-black/40 text-white hover:bg-black/60 backdrop-blur-sm transition-opacity opacity-100 md:opacity-0 md:group-hover:opacity-100 before:absolute before:-inset-2 before:content-['']"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <DotsThree className="h-4 w-4" weight="bold" />
@@ -459,10 +462,12 @@ export default function ReelsPage() {
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button
-                        className="shrink-0 h-8 w-8 grid place-items-center rounded-full text-muted-foreground hover:bg-surface-2 hover:text-ink transition-colors"
+                        // before:-inset-1.5 grows the tap target to ~44px without
+                        // changing the rendered size.
+                        className="relative shrink-0 h-8 w-8 grid place-items-center rounded-full text-muted-foreground hover:bg-surface-2 hover:text-ink transition-colors before:absolute before:-inset-1.5 before:content-['']"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <DotsThree className="h-4 w-4" weight="bold" />
+                        <DotsThree className="h-5 w-5" weight="bold" />
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
