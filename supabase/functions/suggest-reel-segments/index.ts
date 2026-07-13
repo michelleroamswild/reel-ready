@@ -183,11 +183,37 @@ Return one entry per segment, in order. Only return the JSON array.`;
     });
 
     const data = await geminiResponse.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const candidate = data?.candidates?.[0];
+    const text = candidate?.content?.parts?.[0]?.text;
 
     if (!text) {
+      // Surface why Gemini gave us nothing — an API error, a safety block, or a
+      // prompt that blew the token budget all land here otherwise indistinguishable.
+      const reason =
+        data?.error?.message ??
+        candidate?.finishReason ??
+        data?.promptFeedback?.blockReason ??
+        "unknown";
       return new Response(
-        JSON.stringify({ error: "Gemini returned no result", segments: [] }),
+        JSON.stringify({
+          error: `Gemini returned no result (${reason})`,
+          segments: [],
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // A non-STOP finish truncates the JSON array mid-object, which would
+    // otherwise surface as an opaque JSON parse error.
+    if (candidate.finishReason && candidate.finishReason !== "STOP") {
+      return new Response(
+        JSON.stringify({
+          error: `Gemini stopped early (${candidate.finishReason}) — response was incomplete.`,
+          segments: [],
+        }),
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },

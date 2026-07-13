@@ -7,6 +7,20 @@ import type { Video } from "@/types/video";
 const REELS_KEY = ["reels"];
 const reelKey = (id: string) => ["reels", id];
 
+// supabase-js reports every non-2xx from an edge function as the same opaque
+// "Edge Function returned a non-2xx status code". The useful message is in the
+// response body, reachable via the error's `context`.
+async function edgeErrorMessage(fnError: Error): Promise<string> {
+  const context = (fnError as { context?: Response }).context;
+  try {
+    const body = await context?.clone().json();
+    if (body?.error) return body.error;
+  } catch {
+    // body wasn't JSON, or context wasn't a Response — fall through
+  }
+  return fnError.message;
+}
+
 async function fetchReels(): Promise<ReelWithDetails[]> {
   const { data, error } = await supabase
     .from("reels")
@@ -127,7 +141,9 @@ export function useReels() {
             },
           });
 
-        if (fnError) throw fnError;
+        // On a non-2xx, supabase-js only gives us "Edge Function returned a
+        // non-2xx status code" — the actual reason is in the response body.
+        if (fnError) throw new Error(await edgeErrorMessage(fnError));
 
         // Parse result — handle both parsed JSON and string responses
         let parsed = result;
